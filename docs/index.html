@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Coherence - A fully distributed peer-to-peer social network client. No central server, no registration required.">
+  <meta name="keywords" content="P2P, social network, decentralized, Electron, WebTorrent, DHT">
+  <meta property="og:title" content="Coherence - Decentralized Social Network">
+  <meta property="og:description" content="A fully distributed peer-to-peer social network client built with Electron and WebTorrent.">
+  <meta property="og:type" content="website">
+  <title>Coherence — Decentralized P2P Social Network</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      line-height: 1.6;
+      color: #333;
+      background: #fff;
+    }
+
+    header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 20px 0;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+
+    nav {
+      max-width: 1200px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 20px;
+    }
+
+    .logo {
+      font-size: 28px;
+      font-weight: bold;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 30px;
+      list-style: none;
+    }
+
+    .nav-links a {
+      color: white;
+      text-decoration: none;
+      transition: opacity 0.3s;
+    }
+
+    .nav-links a:hover {
+      opacity: 0.8;
+    }
+
+    .hero {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 100px 20px;
+      text-align: center;
+    }
+
+    .hero h1 {
+      font-size: 48px;
+      margin-bottom: 20px;
+      font-weight: 700;
+    }
+
+    .hero p {
+      font-size: 20px;
+      margin-bottom: 40px;
+      opacity: 0.95;
+      max-width: 700px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .cta-buttons {
+      display: flex;
+      gap: 20px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      padding: 12px 30px;
+      font-size: 16px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.3s;
+      font-weight: 600;
+      text-decoration: none;
+      display: inline-block;
+    }
+
+    .btn-primary {
+      background: white;
+      color: #667eea;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+    }
+
+    .btn-secondary {
+      background: transparent;
+      color: white;
+      border: 2px solid white;
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255,255,255,0.1);
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 20px;
+    }
+
+    section {
+      padding: 80px 20px;
+    }
+
+    .section-title {
+      font-size: 36px;
+      margin-bottom: 50px;
+      text-align: center;
+      color: #333;
+    }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 30px;
+      margin-bottom: 40px;
+    }
+
+    .feature-card {
+      background: #f8f9fa;
+      padding: 30px;
+      border-radius: 8px;
+      text-align: center;
+      transition: transform 0.3s, box-shadow 0.3s;
+      border: 1px solid #e0e0e0;
+    }
+
+    .feature-card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 10px 25px rgba(102, 126, 234, 0.1);
+      border-color: #667eea;
+    }
+
+    .feature-icon {
+      font-size: 40px;
+      margin-bottom: 15px;
+    }
+
+    .feature-card h3 {
+      font-size: 20px;
+      margin-bottom: 10px;
+      color: #333;
+    }
+
+    .feature-card p {
+      color: #666;
+      font-size: 14px;
+    }
+
+    .how-it-works {
+      background: #f8f9fa;
+    }
+
+    .steps-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 40px;
+      margin-top: 40px;
+    }
+
+    .step {
+      text-align: center;
+    }
+
+    .step-number {
+      display: inline-block;
+      width: 50px;
+      height: 50px;
+      background: #667eea;
+      color: white;
+      border-radius: 50%;
+      line-height: 50px;
+      font-size: 24px;
+      font-weight: bold;
+      margin-bottom: 15px;
+    }
+
+    .step h3 {
+      font-size: 18px;
+      margin-bottom: 10px;
+      color: #333;
+    }
+
+    .step p {
+      color: #666;
+    }
+
+    .tech-stack {
+      display: flex;
+      justify-content: center;
+      gap: 20px;
+      flex-wrap: wrap;
+      margin-top: 40px;
+    }
+
+    .tech-badge {
+      background: white;
+      padding: 10px 20px;
+      border-radius: 20px;
+      border: 2px solid #667eea;
+      color: #667eea;
+      font-weight: 600;
+      font-size: 14px;
+    }
+
+    .installation {
+      background: #2d3436;
+      color: #f0f0f0;
+      border-radius: 8px;
+      padding: 30px;
+      margin-top: 40px;
+      overflow-x: auto;
+    }
+
+    .installation h3 {
+      margin-bottom: 15px;
+      color: #667eea;
+    }
+
+    .installation code {
+      background: #1e272e;
+      padding: 15px;
+      border-radius: 6px;
+      display: block;
+      font-family: 'Courier New', monospace;
+      line-height: 1.5;
+    }
+
+    .cta-section {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      text-align: center;
+      padding: 80px 20px;
+    }
+
+    .cta-section h2 {
+      font-size: 36px;
+      margin-bottom: 20px;
+    }
+
+    .cta-section p {
+      font-size: 18px;
+      margin-bottom: 30px;
+      opacity: 0.95;
+    }
+
+    footer {
+      background: #333;
+      color: white;
+      text-align: center;
+      padding: 30px 20px;
+      font-size: 14px;
+    }
+
+    .footer-content {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .footer-links {
+      margin-bottom: 20px;
+      display: flex;
+      justify-content: center;
+      gap: 30px;
+      flex-wrap: wrap;
+    }
+
+    .footer-links a {
+      color: #aaa;
+      text-decoration: none;
+      transition: color 0.3s;
+    }
+
+    .footer-links a:hover {
+      color: #667eea;
+    }
+
+    .architecture-section {
+      background: #f8f9fa;
+    }
+
+    .architecture-box {
+      background: white;
+      padding: 25px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      border-left: 4px solid #667eea;
+    }
+
+    .architecture-box h4 {
+      color: #667eea;
+      margin-bottom: 10px;
+    }
+
+    .architecture-box p {
+      color: #666;
+      font-size: 14px;
+    }
+
+    @media (max-width: 768px) {
+      .hero h1 {
+        font-size: 36px;
+      }
+
+      .hero p {
+        font-size: 18px;
+      }
+
+      .nav-links {
+        gap: 15px;
+        font-size: 14px;
+      }
+
+      .section-title {
+        font-size: 28px;
+      }
+
+      .cta-buttons {
+        flex-direction: column;
+      }
+
+      .btn {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Navigation -->
+  <header>
+    <nav class="container">
+      <div class="logo">🔗 Coherence</div>
+      <ul class="nav-links">
+        <li><a href="#features">Features</a></li>
+        <li><a href="#architecture">Architecture</a></li>
+        <li><a href="#getting-started">Getting Started</a></li>
+        <li><a href="https://github.com/valverde-marcelo/coherence" target="_blank">GitHub</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <!-- Hero Section -->
+  <section class="hero">
+    <div class="container">
+      <h1>Coherence</h1>
+      <p>A fully distributed peer-to-peer social network client. No central server. No registration required. Pure freedom.</p>
+      <div class="cta-buttons">
+        <a href="https://github.com/valverde-marcelo/coherence" class="btn btn-primary">Download</a>
+        <a href="#getting-started" class="btn btn-secondary">Learn More</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features Section -->
+  <section id="features" class="container">
+    <h2 class="section-title">Why Coherence?</h2>
+    <div class="features-grid">
+      <div class="feature-card">
+        <div class="feature-icon">🔐</div>
+        <h3>Your Identity</h3>
+        <p>Create a local Ed25519 identity. No usernames, no central registry. Pure cryptography-based identity.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🌐</div>
+        <h3>No Central Server</h3>
+        <p>Every node is both client and server. Distribute content directly using WebTorrent protocol.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🔗</div>
+        <h3>DHT Discovery</h3>
+        <p>Find users and resolve pointers through decentralized DHT mutable records (BEP44).</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">✅</div>
+        <h3>Verifiable Posts</h3>
+        <p>Every post is part of a signed hash chain. Tamper-proof history with author attribution.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">👥</div>
+        <h3>Social Discovery</h3>
+        <p>Find people through friend-of-a-friend gossip. Your social graph is yours to control.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">📦</div>
+        <h3>Chapter-Based Posts</h3>
+        <p>Posts batched into chapters for efficient distribution. Better performance, less fragmentation.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Architecture Section -->
+  <section id="architecture" class="architecture-section">
+    <div class="container">
+      <h2 class="section-title">Technical Architecture</h2>
+      
+      <div class="architecture-box">
+        <h4>🔑 Identity</h4>
+        <p>Uses <strong>tweetnacl</strong> for Ed25519 key generation and signing. Your public key becomes your permanent, verifiable identity across the network.</p>
+      </div>
+
+      <div class="architecture-box">
+        <h4>📡 Content Distribution</h4>
+        <p>Leverages <strong>webtorrent</strong> to seed and download content chapters. Posts are batched into chapters to improve swarm performance and reduce torrent fragmentation.</p>
+      </div>
+
+      <div class="architecture-box">
+        <h4>🔍 Discovery</h4>
+        <p>Uses DHT mutable items with BEP44 to publish signed mutable records. Each user publishes under the hash of their public key, enabling decentralized "what's new" updates.</p>
+      </div>
+
+      <div class="architecture-box">
+        <h4>🔗 Integrity</h4>
+        <p>Each post references the previous post hash and is signed by the author's private key. Provides verifiable attribution and tamper evidence without global consensus.</p>
+      </div>
+
+      <div class="tech-stack">
+        <span class="tech-badge">Electron</span>
+        <span class="tech-badge">WebTorrent</span>
+        <span class="tech-badge">DHT (BEP44)</span>
+        <span class="tech-badge">Ed25519</span>
+        <span class="tech-badge">Node.js</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- How It Works -->
+  <section id="getting-started" class="how-it-works">
+    <div class="container">
+      <h2 class="section-title">Getting Started</h2>
+      
+      <div class="steps-grid">
+        <div class="step">
+          <div class="step-number">1</div>
+          <h3>Install</h3>
+          <p>Clone the repository and run <code>npm install</code></p>
+        </div>
+        <div class="step">
+          <div class="step-number">2</div>
+          <h3>Generate Identity</h3>
+          <p>Launch with <code>npm start</code>. Your Ed25519 key pair is created automatically.</p>
+        </div>
+        <div class="step">
+          <div class="step-number">3</div>
+          <h3>Connect</h3>
+          <p>Join the DHT network and start discovering peers in your social graph.</p>
+        </div>
+        <div class="step">
+          <div class="step-number">4</div>
+          <h3>Share</h3>
+          <p>Create posts, follow users, and seed content. You are both client and network node.</p>
+        </div>
+      </div>
+
+      <div class="installation">
+        <h3>Quick Install</h3>
+        <code>git clone https://github.com/valverde-marcelo/coherence.git
+cd coherence
+npm install
+npm start</code>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA Section -->
+  <section class="cta-section">
+    <div class="container">
+      <h2>Ready to Join the Decentralized Network?</h2>
+      <p>Coherence gives you complete control over your identity and content.</p>
+      <div class="cta-buttons">
+        <a href="https://github.com/valverde-marcelo/coherence" class="btn btn-primary" style="background: white; color: #667eea;">View on GitHub</a>
+        <a href="https://github.com/valverde-marcelo/coherence/blob/main/README.md" class="btn btn-secondary">Read Documentation</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <div class="footer-content">
+      <div class="footer-links">
+        <a href="https://github.com/valverde-marcelo/coherence">GitHub</a>
+        <a href="https://github.com/valverde-marcelo/coherence/blob/main/LICENSE">License (Apache 2.0)</a>
+        <a href="https://github.com/valverde-marcelo/coherence/blob/main/CONTRIBUTING.md">Contributing</a>
+      </div>
+      <p>&copy; 2026 Coherence. A distributed social network. All peers are equal.</p>
+    </div>
+  </footer>
+</body>
+</html>
