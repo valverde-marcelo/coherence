@@ -1,0 +1,100 @@
+{
+  "_meta": {
+    "language": "pt-BR",
+    "languageLabel": "Português (Brasil)",
+    "contributors": ["initial"]
+  },
+  "common": {
+    "copy": "Copiar",
+    "copied": "Copiado!",
+    "loading": "carregando…",
+    "follow": "Seguir",
+    "unfollow": "Deixar de seguir"
+  },
+  "identity": {
+    "label": "sua identidade (chave pública)",
+    "displayNamePlaceholder": "seu nome de exibição (opcional)"
+  },
+  "nav": {
+    "feed": "Feed",
+    "follows": "Seguindo",
+    "about": "Como funciona"
+  },
+  "composer": {
+    "placeholder": "O que você quer compartilhar com a rede?",
+    "attachBtn": "📎 Anexar imagem",
+    "publishBtn": "Publicar"
+  },
+  "follows": {
+    "pubkeyPlaceholder": "Chave pública (hex, 64 caracteres)",
+    "aliasPlaceholder": "Apelido (opcional)",
+    "followBtn": "Seguir",
+    "searchTitle": "Buscar usuários",
+    "searchHint": "Não há nenhum diretório central: a busca combina quem você já segue com pessoas descobertas por \"amigo de amigo\" (quem eles seguem).",
+    "searchPlaceholder": "Nome ou chave pública…",
+    "searchBtn": "Buscar",
+    "emptyList": "Você ainda não segue ninguém. Cole a chave pública de alguém acima.",
+    "unfollowBtn": "Deixar de seguir",
+    "lastSeqMeta_one": "último post: seq",
+    "lastSeqMeta_other": "último post: seq",
+    "awaitingSync": "aguardando primeira sincronização…"
+  },
+  "feed": {
+    "emptyWithoutFollows": "Nenhum post ainda. Publique algo ou siga alguém pela chave pública.",
+    "youLabel": "Você",
+    "postFooterFmt": "seq {seq} · hash {hash}…"
+  },
+  "stats": {
+    "peers": "peers:",
+    "downloadLabel": "↓",
+    "uploadLabel": "↑",
+    "torrents": "torrents:"
+  },
+  "search": {
+    "notFound": "Nenhum usuário encontrado.",
+    "noUsersKnown": "Ainda não há usuários conhecidos — siga alguém para começar a descobrir a rede.",
+    "youFollow": "você segue",
+    "discoveredViaFmt": "descoberto via {user}",
+    "alreadyFollows": "já segue ✓",
+    "followBtn": "Seguir"
+  },
+  "errors": {
+    "displayNameError": "Erro ao salvar nome:",
+    "publishError": "Erro ao publicar:",
+    "followError": "Erro ao seguir:"
+  },
+  "dialog": {
+    "imagesLabel": "Imagens"
+  },
+  "about": {
+    "title": "Arquitetura 100% distribuída",
+    "identity": "Identidade: par de chaves ed25519 gerado localmente — sem cadastro, sem servidor, sem username.",
+    "distribution": "Distribuição de conteúdo: WebTorrent. Posts são agrupados em \"capítulos\" (torrents concentrados) em vez de 1 torrent por post.",
+    "discovery": "Descoberta: DHT Kademlia (BEP44), item mutável assinado apontando para o capítulo mais recente de cada pessoa.",
+    "integrity": "Integridade/histórico: hash-chain pessoal assinada — cada post referencia o hash do anterior e é assinado pela sua chave privada.",
+    "userSearch": "Busca de usuários: sem servidor de cadastro, a descoberta de novos usuários acontece por gossip amigo-de-amigo — cada ponteiro publicado no DHT inclui seu nome de exibição e uma amostra de quem você segue, permitindo que seus seguidores descubram pessoas na sua rede.",
+    "speed": "Velocidade: reseeding automático (todo peer que baixa passa a semear), múltiplos trackers + DHT + PEX + LSD, polling adaptativo conforme o foco da janela, priorização de peças para mídia."
+  },
+  "languageSwitcher": {
+    "label": "Idioma"
+  },
+  "settings": {
+    "backup": {
+      "title": "💾 Backup e Recuperação",
+      "exportLabel": "Exportar Backup",
+      "exportHint": "Cria um arquivo ZIP criptografado com sua identidade, posts e configurações. Você pode usar este arquivo para restaurar sua conta em outro dispositivo.",
+      "usePassword": "Proteger com senha?",
+      "exportBtn": "Exportar Backup",
+      "importLabel": "Importar Backup",
+      "importHint": "Restaura sua identidade, posts e configurações a partir de um arquivo de backup anterior. A conta atual será substituída.",
+      "passwordRequired": "Backup protegido por senha?",
+      "importBtn": "Importar Backup",
+      "openFolderBtn": "Abrir pasta de backups",
+      "autoBackupLabel": "Habilitar backup automático",
+      "autoBackupIntervalLabel": "Frequência:",
+      "intervalDaily": "Diariamente",
+      "intervalWeekly": "Semanalmente",
+      "intervalMonthly": "Mensalmente"
+    }
+  }
+}

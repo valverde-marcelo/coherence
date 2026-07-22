@@ -1,0 +1,37 @@
+'use strict'
+const path = require('path')
+const fs = require('fs')
+const { app } = require('electron')
+
+// Raiz de dados do usuário para este app (identidade, chain, cache, torrents)
+function root () {
+  const base = app.getPath('userData')
+  return path.join(base, 'p2p-social')
+}
+
+const P = {
+  root,
+  identityFile: () => path.join(root(), 'identity.json'),
+  identityKeyFile: () => path.join(root(), 'identity.key'),
+  dbFile: () => path.join(root(), 'db.json'),
+  chaptersOwnRoot: () => path.join(root(), 'chapters', 'own'),
+  chaptersOwnOpen: () => path.join(root(), 'chapters', 'own', 'open'),
+  chaptersOwnSealed: () => path.join(root(), 'chapters', 'own', 'sealed'),
+  chaptersOwnIndex: () => path.join(root(), 'chapters', 'own', 'index.json'),
+  cacheRoot: () => path.join(root(), 'chapters', 'cache'),
+  backupsRoot: () => path.join(root(), 'backups')
+}
+
+function ensureDir (p) {
+  fs.mkdirSync(p, { recursive: true })
+}
+
+function ensureAllDirs () {
+  ensureDir(root())
+  ensureDir(P.chaptersOwnOpen())
+  ensureDir(path.join(P.chaptersOwnOpen(), 'media'))
+  ensureDir(P.chaptersOwnSealed())
+  ensureDir(P.cacheRoot())
+}
+
+module.exports = { ...P, ensureDir, ensureAllDirs }

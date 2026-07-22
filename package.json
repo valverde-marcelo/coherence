@@ -1,0 +1,43 @@
+{
+  "name": "coherence",
+  "version": "0.1.0",
+  "description": "Distributed peer-to-peer social network client using Electron, WebTorrent, and DHT mutable records.",
+  "private": true,
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder",
+    "validate-locales": "node scripts/validate-locales.js"
+  },
+  "author": "Valverde82 (@valverdeoficial)",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "tweetnacl": "^1.0.3",
+    "webtorrent": "^3.0.16",
+    "archiver": "^6.0.0",
+    "extract-zip": "^2.0.1"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.coherence.p2p",
+    "productName": "Coherence",
+    "files": [
+      "electron/**/*",
+      "src/**/*",
+      "renderer/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "linux": {
+      "target": "AppImage"
+    },
+    "mac": {
+      "target": "dmg"
+    }
+  }
+}

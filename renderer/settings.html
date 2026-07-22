@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'">
+  <title>Configurações - Coherence</title>
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    .settings-container {
+      max-width: 600px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    .settings-section {
+      margin-bottom: 30px;
+      padding: 15px;
+      border: 1px solid #333;
+      border-radius: 8px;
+      background-color: #1a1f2e;
+    }
+    .settings-section h2 {
+      margin-top: 0;
+      margin-bottom: 15px;
+      font-size: 18px;
+      color: #fff;
+      border-bottom: 2px solid #4a5f8f;
+      padding-bottom: 10px;
+    }
+    .settings-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .settings-row label {
+      flex: 1;
+      min-width: 200px;
+    }
+    .settings-row input[type="checkbox"] {
+      cursor: pointer;
+    }
+    .settings-row select {
+      padding: 6px 10px;
+      background-color: #2a3040;
+      color: #fff;
+      border: 1px solid #444;
+      border-radius: 4px;
+    }
+    .backup-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .backup-actions button {
+      flex: 1;
+      min-width: 150px;
+      padding: 10px 15px;
+      background-color: #4a5f8f;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: background-color 0.2s;
+    }
+    .backup-actions button:hover {
+      background-color: #5a7fab;
+    }
+    .backup-actions button.danger {
+      background-color: #8f4a4a;
+    }
+    .backup-actions button.danger:hover {
+      background-color: #9f5a5a;
+    }
+    .password-input-row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .password-input-row input {
+      flex: 1;
+      min-width: 200px;
+      padding: 8px;
+      background-color: #2a3040;
+      color: #fff;
+      border: 1px solid #444;
+      border-radius: 4px;
+    }
+    .password-toggle {
+      cursor: pointer;
+      user-select: none;
+    }
+    .info-text {
+      font-size: 12px;
+      color: #aaa;
+      margin-top: 8px;
+      line-height: 1.4;
+    }
+    .success {
+      background-color: #2a4a2a;
+      border-color: #4a8a4a;
+      color: #aaffaa;
+      padding: 10px;
+      border-radius: 4px;
+      margin-top: 10px;
+      font-size: 13px;
+    }
+    .error {
+      background-color: #4a2a2a;
+      border-color: #8a4a4a;
+      color: #ffaaaa;
+      padding: 10px;
+      border-radius: 4px;
+      margin-top: 10px;
+      font-size: 13px;
+    }
+    .progress {
+      display: none;
+      margin-top: 10px;
+      font-size: 12px;
+      color: #aaa;
+    }
+    .progress.show {
+      display: block;
+    }
+    .back-button {
+      margin-bottom: 20px;
+    }
+    .back-button button {
+      padding: 8px 15px;
+      background-color: #333;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+    .back-button button:hover {
+      background-color: #444;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <h1>Configurações</h1>
+    </header>
+
+    <div class="settings-container">
+      <div class="back-button">
+        <button id="back-btn">← Voltar</button>
+      </div>
+
+      <!-- Backup & Recovery Section -->
+      <div class="settings-section">
+        <h2 data-i18n="settings.backup.title">💾 Backup e Recuperação</h2>
+        
+        <div class="settings-row">
+          <label>
+            <strong data-i18n="settings.backup.exportLabel">Exportar Backup</strong>
+            <p class="info-text" data-i18n="settings.backup.exportHint">Cria um arquivo ZIP criptografado com sua identidade, posts e configurações. Você pode usar este arquivo para restaurar sua conta em outro dispositivo.</p>
+          </label>
+        </div>
+
+        <div class="password-input-row" id="export-password-row">
+          <label>
+            <input type="checkbox" id="export-use-password" />
+            <span class="password-toggle" data-i18n="settings.backup.usePassword">Proteger com senha?</span>
+          </label>
+          <input type="password" id="export-password" placeholder="Senha (deixe vazio para nenhuma proteção)" style="display: none;" />
+        </div>
+
+        <div class="backup-actions">
+          <button id="export-backup-btn" data-i18n="settings.backup.exportBtn">Exportar Backup</button>
+        </div>
+
+        <div id="export-result" class="progress"></div>
+
+        <hr style="margin: 20px 0; border: none; border-top: 1px solid #333;" />
+
+        <div class="settings-row">
+          <label>
+            <strong data-i18n="settings.backup.importLabel">Importar Backup</strong>
+            <p class="info-text" data-i18n="settings.backup.importHint">Restaura sua identidade, posts e configurações a partir de um arquivo de backup anterior. A conta atual será substituída.</p>
+          </label>
+        </div>
+
+        <div class="password-input-row" id="import-password-row">
+          <label>
+            <input type="checkbox" id="import-use-password" />
+            <span class="password-toggle" data-i18n="settings.backup.passwordRequired">Backup protegido por senha?</span>
+          </label>
+          <input type="password" id="import-password" placeholder="Senha do backup" style="display: none;" />
+        </div>
+
+        <div class="backup-actions">
+          <button id="import-backup-btn" data-i18n="settings.backup.importBtn">Importar Backup</button>
+          <button id="open-backups-folder-btn" data-i18n="settings.backup.openFolderBtn">Abrir pasta de backups</button>
+        </div>
+
+        <div id="import-result" class="progress"></div>
+
+        <hr style="margin: 20px 0; border: none; border-top: 1px solid #333;" />
+
+        <div class="settings-row">
+          <label>
+            <input type="checkbox" id="auto-backup-enabled" />
+            <span data-i18n="settings.backup.autoBackupLabel">Habilitar backup automático</span>
+          </label>
+        </div>
+
+        <div class="settings-row" id="auto-backup-interval-row" style="display: none;">
+          <label data-i18n="settings.backup.autoBackupIntervalLabel">Frequência:</label>
+          <select id="auto-backup-interval">
+            <option value="daily" data-i18n="settings.backup.intervalDaily">Diariamente</option>
+            <option value="weekly" data-i18n="settings.backup.intervalWeekly">Semanalmente</option>
+            <option value="monthly" data-i18n="settings.backup.intervalMonthly">Mensalmente</option>
+          </select>
+        </div>
+
+        <div id="last-backup-info" class="info-text" style="margin-top: 15px;"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="../src/i18n/translator.js"></script>
+  <script src="settings.js"></script>
+</body>
+</html>

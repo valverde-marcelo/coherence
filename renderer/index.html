@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'">
+  <title>Coherence</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <h1>Coherence</h1>
+      <div class="identity-box">
+        <span class="label" data-i18n="identity.label">sua identidade (chave pública)</span>
+        <code id="own-pubkey">carregando…</code>
+        <button id="copy-pubkey" title="Copiar chave pública" data-i18n="common.copy">Copiar</button>
+        <input id="display-name" class="display-name-input" placeholder="seu nome de exibição (opcional)" data-i18n-placeholder="identity.displayNamePlaceholder" maxlength="40" />
+      </div>
+      <div id="stats" class="stats"></div>
+      <div class="language-switcher">
+        <label data-i18n="languageSwitcher.label">Idioma</label>
+        <select id="language-select"></select>
+      </div>
+      <button id="settings-btn" title="" style="padding: 8px 15px; background-color: #4a5f8f; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">⚙️</button>
+    </header>
+
+    <nav class="tabs">
+      <button class="tab-btn active" data-tab="feed" data-i18n="nav.feed">Feed</button>
+      <button class="tab-btn" data-tab="follows" data-i18n="nav.follows">Seguindo</button>
+      <button class="tab-btn" data-tab="about" data-i18n="nav.about">Como funciona</button>
+    </nav>
+
+    <main>
+      <section id="tab-feed" class="tab-panel active">
+        <div class="composer">
+          <textarea id="post-text" placeholder="O que você quer compartilhar com a rede?" data-i18n-placeholder="composer.placeholder" maxlength="2000"></textarea>
+          <div class="composer-attachments" id="composer-attachments"></div>
+          <div class="composer-actions">
+            <button id="attach-btn" data-i18n="composer.attachBtn">📎 Anexar imagem</button>
+            <button id="publish-btn" class="primary" data-i18n="composer.publishBtn">Publicar</button>
+          </div>
+        </div>
+        <div id="feed-list" class="feed-list"></div>
+      </section>
+
+      <section id="tab-follows" class="tab-panel">
+        <div class="follow-add">
+          <input id="follow-pubkey" placeholder="Chave pública (hex, 64 caracteres)" data-i18n-placeholder="follows.pubkeyPlaceholder" />
+          <input id="follow-alias" placeholder="Apelido (opcional)" data-i18n-placeholder="follows.aliasPlaceholder" />
+          <button id="follow-add-btn" class="primary" data-i18n="follows.followBtn">Seguir</button>
+        </div>
+        <div id="follows-list" class="follows-list"></div>
+
+        <h3 class="section-title" data-i18n="follows.searchTitle">Buscar usuários</h3>
+        <p class="section-hint" data-i18n="follows.searchHint">Não há nenhum diretório central: a busca combina quem você já segue com pessoas descobertas por "amigo de amigo" (quem eles seguem).</p>
+        <div class="user-search">
+          <input id="user-search-input" placeholder="Nome ou chave pública…" data-i18n-placeholder="follows.searchPlaceholder" />
+          <button id="user-search-btn" data-i18n="follows.searchBtn">Buscar</button>
+        </div>
+        <div id="user-search-results" class="user-search-results"></div>
+      </section>
+
+      <section id="tab-about" class="tab-panel">
+        <div class="about-content">
+          <h2 data-i18n="about.title">Arquitetura 100% distribuída</h2>
+          <ul>
+            <li><b data-i18n="about.identity">Identidade: par de chaves ed25519 gerado localmente — sem cadastro, sem servidor, sem username.</b></li>
+            <li><b data-i18n="about.distribution">Distribuição de conteúdo: WebTorrent. Posts são agrupados em "capítulos" (torrents concentrados) em vez de 1 torrent por post.</b></li>
+            <li><b data-i18n="about.discovery">Descoberta: DHT Kademlia (BEP44), item mutável assinado apontando para o capítulo mais recente de cada pessoa.</b></li>
+            <li><b data-i18n="about.integrity">Integridade/histórico: hash-chain pessoal assinada — cada post referencia o hash do anterior e é assinado pela sua chave privada.</b></li>
+            <li><b data-i18n="about.userSearch">Busca de usuários: sem servidor de cadastro, a descoberta de novos usuários acontece por gossip amigo-de-amigo — cada ponteiro publicado no DHT inclui seu nome de exibição e uma amostra de quem você segue, permitindo que seus seguidores descubram pessoas na sua rede.</b></li>
+            <li><b data-i18n="about.speed">Velocidade: reseeding automático (todo peer que baixa passa a semear), múltiplos trackers + DHT + PEX + LSD, polling adaptativo conforme o foco da janela, priorização de peças para mídia.</b></li>
+          </ul>
+        </div>
+      </section>
+    </main>
+  </div>
+  <script src="../src/i18n/translator.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

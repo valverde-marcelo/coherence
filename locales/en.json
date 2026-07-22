@@ -1,0 +1,100 @@
+{
+  "_meta": {
+    "language": "en",
+    "languageLabel": "English",
+    "contributors": ["initial"]
+  },
+  "common": {
+    "copy": "Copy",
+    "copied": "Copied!",
+    "loading": "loading…",
+    "follow": "Follow",
+    "unfollow": "Unfollow"
+  },
+  "identity": {
+    "label": "your identity (public key)",
+    "displayNamePlaceholder": "your display name (optional)"
+  },
+  "nav": {
+    "feed": "Feed",
+    "follows": "Following",
+    "about": "How it works"
+  },
+  "composer": {
+    "placeholder": "What do you want to share with the network?",
+    "attachBtn": "📎 Attach image",
+    "publishBtn": "Publish"
+  },
+  "follows": {
+    "pubkeyPlaceholder": "Public key (hex, 64 characters)",
+    "aliasPlaceholder": "Nickname (optional)",
+    "followBtn": "Follow",
+    "searchTitle": "Search users",
+    "searchHint": "There's no central directory: search combines who you follow with people discovered through \"friend of a friend\" (who they follow).",
+    "searchPlaceholder": "Name or public key…",
+    "searchBtn": "Search",
+    "emptyList": "You're not following anyone yet. Paste someone's public key above.",
+    "unfollowBtn": "Unfollow",
+    "lastSeqMeta_one": "last post: seq",
+    "lastSeqMeta_other": "last post: seq",
+    "awaitingSync": "waiting for first sync…"
+  },
+  "feed": {
+    "emptyWithoutFollows": "No posts yet. Publish something or follow someone by public key.",
+    "youLabel": "You",
+    "postFooterFmt": "seq {seq} · hash {hash}…"
+  },
+  "stats": {
+    "peers": "peers:",
+    "downloadLabel": "↓",
+    "uploadLabel": "↑",
+    "torrents": "torrents:"
+  },
+  "search": {
+    "notFound": "No users found.",
+    "noUsersKnown": "No known users yet — follow someone to start discovering the network.",
+    "youFollow": "you follow",
+    "discoveredViaFmt": "discovered via {user}",
+    "alreadyFollows": "already follows ✓",
+    "followBtn": "Follow"
+  },
+  "errors": {
+    "displayNameError": "Error saving name:",
+    "publishError": "Error publishing:",
+    "followError": "Error following:"
+  },
+  "dialog": {
+    "imagesLabel": "Images"
+  },
+  "about": {
+    "title": "100% distributed architecture",
+    "identity": "Identity: Ed25519 key pair generated locally — no signup, no server, no username.",
+    "distribution": "Content distribution: WebTorrent. Posts are grouped into \"chapters\" (concentrated torrents) instead of 1 torrent per post.",
+    "discovery": "Discovery: Kademlia DHT (BEP44), signed mutable item pointing to each person's latest chapter.",
+    "integrity": "Integrity/history: signed personal hash-chain — each post references the previous post's hash and is signed with your private key.",
+    "userSearch": "User search: without a signup server, new user discovery happens through friend-of-a-friend gossip — each pointer published to the DHT includes your display name and a sample of who you follow, allowing your followers to discover people in your network.",
+    "speed": "Speed: automatic reseeding (every peer downloading becomes a seeder), multiple trackers + DHT + PEX + LSD, adaptive polling based on window focus, prioritized media chunk selection."
+  },
+  "languageSwitcher": {
+    "label": "Language"
+  },
+  "settings": {
+    "backup": {
+      "title": "💾 Backup & Recovery",
+      "exportLabel": "Export Backup",
+      "exportHint": "Creates an encrypted ZIP file with your identity, posts, and settings. You can use this file to restore your account on another device.",
+      "usePassword": "Protect with password?",
+      "exportBtn": "Export Backup",
+      "importLabel": "Import Backup",
+      "importHint": "Restores your identity, posts, and settings from a previous backup file. Your current account will be replaced.",
+      "passwordRequired": "Backup protected by password?",
+      "importBtn": "Import Backup",
+      "openFolderBtn": "Open backups folder",
+      "autoBackupLabel": "Enable automatic backups",
+      "autoBackupIntervalLabel": "Frequency:",
+      "intervalDaily": "Daily",
+      "intervalWeekly": "Weekly",
+      "intervalMonthly": "Monthly"
+    }
+  }
+}
