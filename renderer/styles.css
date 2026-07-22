@@ -123,3 +123,198 @@ main { flex: 1; overflow-y: auto; padding: 20px; max-width: 720px; margin: 0 aut
 .about-content li { margin-bottom: 8px; }
 
 .empty-hint { color: var(--muted); text-align: center; padding: 40px 0; font-size: 13px; }
+
+/* Seal Progress Bar */
+.seal-progress {
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.progress-bar {
+  flex: 1;
+  background: var(--border);
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.progress-fill {
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  height: 100%;
+  width: 0%;
+  transition: width 0.3s ease;
+}
+.progress-text {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* Modal */
+.modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+.modal-content {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  max-width: 400px;
+  width: 90%;
+  max-height: 80vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.modal-header h2 {
+  margin: 0;
+  font-size: 16px;
+}
+.modal-body {
+  padding: 20px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+.qrcode-canvas {
+  background: white;
+  padding: 10px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 200px;
+  min-height: 200px;
+}
+.qrcode-canvas canvas {
+  max-width: 100%;
+  max-height: 300px;
+}
+.qrcode-info {
+  font-size: 12px;
+  color: var(--muted);
+  text-align: center;
+  margin: 0;
+}
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--border);
+}
+.modal-footer button {
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+}
+.modal-footer .primary {
+  background: var(--accent);
+  color: white;
+}
+
+/* Popular Users Section */
+.popular-users-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.popular-user-card {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.popular-user-card:hover {
+  border-color: var(--accent);
+  background: var(--panel);
+}
+.popular-user-card .name {
+  font-weight: 600;
+  font-size: 12px;
+  margin-bottom: 6px;
+  word-break: break-word;
+}
+.popular-user-card .pubkey {
+  font-size: 10px;
+  color: var(--muted);
+  font-family: monospace;
+  word-break: break-all;
+}
+.popular-user-card button {
+  width: 100%;
+  margin-top: 8px;
+  padding: 6px;
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+}
+.popular-user-card button:hover {
+  background: var(--accent-2);
+}
+
+/* Follow Add Button Row */
+.follow-add {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.follow-add input {
+  flex: 1;
+  min-width: 120px;
+}
+.follow-add button {
+  white-space: nowrap;
+}
+#follow-qr-scan-btn {
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 13px;
+}
+#follow-qr-scan-btn:hover {
+  background: var(--accent-2);
+}
+
+/* QR Scanner Styles */
+#qr-scanner {
+  background: black;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}

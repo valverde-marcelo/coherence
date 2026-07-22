@@ -2,6 +2,35 @@
 const crypto = require('crypto')
 
 const GENESIS_HASH = '0'.repeat(64)
+const POW_DIFFICULTY = 2 // número de zeros no início do hash (leve: 2^2 = 4 tentativas em média)
+
+/**
+ * Calcula prova de trabalho: encontra um nonce tal que sha256(nonce + preimage)
+ * tenha N zeros no início (difícil para spam, fácil para verificação).
+ */
+function computePow (preimage, difficulty = POW_DIFFICULTY) {
+  let nonce = 0
+  const maxAttempts = 1000000 // failsafe contra loop infinito
+  const targetPrefix = '0'.repeat(difficulty)
+  
+  while (nonce < maxAttempts) {
+    const hash = crypto.createHash('sha256').update(`${nonce}:${preimage}`).digest('hex')
+    if (hash.startsWith(targetPrefix)) {
+      return { nonce, hash }
+    }
+    nonce++
+  }
+  throw new Error(`Não foi possível encontrar PoW válido após ${maxAttempts} tentativas`)
+}
+
+/**
+ * Verifica se um nonce é válido para um preimage dado.
+ */
+function verifyPow (nonce, preimage, difficulty = POW_DIFFICULTY) {
+  const hash = crypto.createHash('sha256').update(`${nonce}:${preimage}`).digest('hex')
+  const targetPrefix = '0'.repeat(difficulty)
+  return hash.startsWith(targetPrefix)
+}
 
 /**
  * "Hash-chain" pessoal assinada — a ideia boa de blockchain (integridade e
@@ -26,7 +55,7 @@ function computeHash (post) {
 }
 
 /**
- * Cria e assina o próximo post da cadeia do usuário.
+ * Cria e assina o próximo post da cadeia do usuário com prova de trabalho (PoW).
  * @param {Identity} identity
  * @param {Array} chain - cadeia local existente (ownChain), ordenada por seq crescente
  * @param {{type:string, text?:string, media?:Array}} input
@@ -45,17 +74,31 @@ function createSignedPost (identity, chain, input) {
     pubkeyHex: identity.publicKeyHex
   }
   post.hash = computeHash(post)
+  
+  // Calcula prova de trabalho para defesa contra Sybil
+  const powPreimage = `${post.pubkeyHex}:${post.seq}:${post.hash}`
+  const { nonce: powNonce } = computePow(powPreimage)
+  post.powNonce = powNonce
+  
   post.sig = identity.sign(Buffer.from(post.hash, 'hex')).toString('hex')
   return post
 }
 
 /**
- * Verifica um único post: assinatura válida e hash bate com o conteúdo.
+ * Verifica um único post: assinatura válida, hash bate com o conteúdo, e PoW válido.
  */
 function verifyPost (post, verifyFn) {
   const expectedHash = computeHash(post)
   if (expectedHash !== post.hash) return false
-  return verifyFn(Buffer.from(post.hash, 'hex'), Buffer.from(post.sig, 'hex'), Buffer.from(post.pubkeyHex, 'hex'))
+  if (!verifyFn(Buffer.from(post.hash, 'hex'), Buffer.from(post.sig, 'hex'), Buffer.from(post.pubkeyHex, 'hex'))) return false
+  
+  // Verifica prova de trabalho (defesa contra Sybil)
+  if (post.powNonce !== undefined) {
+    const powPreimage = `${post.pubkeyHex}:${post.seq}:${post.hash}`
+    if (!verifyPow(post.powNonce, powPreimage)) return false
+  }
+  
+  return true
 }
 
 /**
@@ -81,4 +124,4 @@ function verifySequence (posts, verifyFn, knownPrev = null) {
   return { ok: true }
 }
 
-module.exports = { GENESIS_HASH, computeHash, createSignedPost, verifyPost, verifyLink, verifySequence, canonicalize }
+module.exports = { GENESIS_HASH, computeHash, createSignedPost, verifyPost, verifyLink, verifySequence, canonicalize, computePow, verifyPow, POW_DIFFICULTY }

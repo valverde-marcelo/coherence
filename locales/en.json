@@ -9,7 +9,8 @@
     "copied": "Copied!",
     "loading": "loading…",
     "follow": "Follow",
-    "unfollow": "Unfollow"
+    "unfollow": "Unfollow",
+    "close": "Close"
   },
   "identity": {
     "label": "your identity (public key)",
@@ -29,6 +30,9 @@
     "pubkeyPlaceholder": "Public key (hex, 64 characters)",
     "aliasPlaceholder": "Nickname (optional)",
     "followBtn": "Follow",
+    "scanQrBtn": "📱 Scan QR",
+    "popularTitle": "Popular Users",
+    "popularHint": "Start following some known users to discover the network.",
     "searchTitle": "Search users",
     "searchHint": "There's no central directory: search combines who you follow with people discovered through \"friend of a friend\" (who they follow).",
     "searchPlaceholder": "Name or public key…",
@@ -96,5 +100,15 @@
       "intervalWeekly": "Weekly",
       "intervalMonthly": "Monthly"
     }
+  },
+  "qrcode": {
+    "shareTitle": "Share public key",
+    "shareInfo": "Share this QR code so others can add you as a contact.",
+    "scanTitle": "Scan QR Code",
+    "scanInfo": "Point the camera at a friend's QR code.",
+    "useBtn": "Use"
+  },
+  "chapter": {
+    "rateLimited": "Rate limited: wait {seconds}s"
   }
 }

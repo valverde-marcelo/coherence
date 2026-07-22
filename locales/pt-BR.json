@@ -9,7 +9,8 @@
     "copied": "Copiado!",
     "loading": "carregando…",
     "follow": "Seguir",
-    "unfollow": "Deixar de seguir"
+    "unfollow": "Deixar de seguir",
+    "close": "Fechar"
   },
   "identity": {
     "label": "sua identidade (chave pública)",
@@ -29,6 +30,9 @@
     "pubkeyPlaceholder": "Chave pública (hex, 64 caracteres)",
     "aliasPlaceholder": "Apelido (opcional)",
     "followBtn": "Seguir",
+    "scanQrBtn": "📱 Escanear QR",
+    "popularTitle": "Usuários Populares",
+    "popularHint": "Comece seguindo alguns usuários conhecidos para descobrir a rede.",
     "searchTitle": "Buscar usuários",
     "searchHint": "Não há nenhum diretório central: a busca combina quem você já segue com pessoas descobertas por \"amigo de amigo\" (quem eles seguem).",
     "searchPlaceholder": "Nome ou chave pública…",
@@ -96,5 +100,15 @@
       "intervalWeekly": "Semanalmente",
       "intervalMonthly": "Mensalmente"
     }
+  },
+  "qrcode": {
+    "shareTitle": "Compartilhar chave pública",
+    "shareInfo": "Compartilhe este QR code para que outras pessoas adicionem você como contato.",
+    "scanTitle": "Escanear QR Code",
+    "scanInfo": "Aponte a câmera para o QR code de um amigo.",
+    "useBtn": "Usar"
+  },
+  "chapter": {
+    "rateLimited": "Taxa limite: aguarde {seconds}s"
   }
 }

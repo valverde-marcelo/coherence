@@ -12,10 +12,13 @@
   "author": "Valverde82 (@valverdeoficial)",
   "license": "Apache-2.0",
   "dependencies": {
-    "tweetnacl": "^1.0.3",
-    "webtorrent": "^3.0.16",
     "archiver": "^6.0.0",
-    "extract-zip": "^2.0.1"
+    "argon2": "^0.45.1",
+    "date-fns": "^4.4.0",
+    "extract-zip": "^2.0.1",
+    "html5-qrcode": "^2.3.8",
+    "tweetnacl": "^1.0.3",
+    "webtorrent": "^3.0.16"
   },
   "devDependencies": {
     "electron": "^31.0.0",

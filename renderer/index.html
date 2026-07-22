@@ -14,6 +14,7 @@
         <span class="label" data-i18n="identity.label">sua identidade (chave pública)</span>
         <code id="own-pubkey">carregando…</code>
         <button id="copy-pubkey" title="Copiar chave pública" data-i18n="common.copy">Copiar</button>
+        <button id="qrcode-btn" title="Gerar QR code da sua chave pública" data-i18n="identity.qrBtn">📱 QR</button>
         <input id="display-name" class="display-name-input" placeholder="seu nome de exibição (opcional)" data-i18n-placeholder="identity.displayNamePlaceholder" maxlength="40" />
       </div>
       <div id="stats" class="stats"></div>
@@ -35,6 +36,12 @@
         <div class="composer">
           <textarea id="post-text" placeholder="O que você quer compartilhar com a rede?" data-i18n-placeholder="composer.placeholder" maxlength="2000"></textarea>
           <div class="composer-attachments" id="composer-attachments"></div>
+          <div id="seal-progress" class="seal-progress" style="display: none;">
+            <div class="progress-bar">
+              <div id="seal-progress-fill" class="progress-fill"></div>
+            </div>
+            <span id="seal-progress-text" class="progress-text">Selando capítulo...</span>
+          </div>
           <div class="composer-actions">
             <button id="attach-btn" data-i18n="composer.attachBtn">📎 Anexar imagem</button>
             <button id="publish-btn" class="primary" data-i18n="composer.publishBtn">Publicar</button>
@@ -48,7 +55,15 @@
           <input id="follow-pubkey" placeholder="Chave pública (hex, 64 caracteres)" data-i18n-placeholder="follows.pubkeyPlaceholder" />
           <input id="follow-alias" placeholder="Apelido (opcional)" data-i18n-placeholder="follows.aliasPlaceholder" />
           <button id="follow-add-btn" class="primary" data-i18n="follows.followBtn">Seguir</button>
+          <button id="follow-qr-scan-btn" data-i18n="follows.scanQrBtn">📱 Escanear QR</button>
         </div>
+        
+        <div id="popular-users-section" style="display: none;">
+          <h3 class="section-title" data-i18n="follows.popularTitle">Usuários Populares</h3>
+          <p class="section-hint" data-i18n="follows.popularHint">Comece seguindo alguns usuários conhecidos para descobrir a rede.</p>
+          <div id="popular-users-list" class="popular-users-list"></div>
+        </div>
+        
         <div id="follows-list" class="follows-list"></div>
 
         <h3 class="section-title" data-i18n="follows.searchTitle">Buscar usuários</h3>
@@ -76,6 +91,43 @@
     </main>
   </div>
   <script src="../src/i18n/translator.js"></script>
+  <script src="../node_modules/html5-qrcode/esm/html5-qrcode.min.js"></script>
   <script src="app.js"></script>
+  
+  <!-- QR Code Modal (Generate) -->
+  <div id="qrcode-modal" class="modal" style="display: none;">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 data-i18n="qrcode.shareTitle">Compartilhar chave pública</h2>
+        <button id="qrcode-modal-close" class="modal-close" style="background: none; border: none; cursor: pointer; font-size: 24px; color: #999;">✕</button>
+      </div>
+      <div class="modal-body">
+        <div id="qrcode-canvas" class="qrcode-canvas"></div>
+        <p class="qrcode-info" data-i18n="qrcode.shareInfo">Compartilhe este QR code para que outras pessoas adicionem você como contato.</p>
+      </div>
+      <div class="modal-footer">
+        <button id="qrcode-modal-ok" class="primary" data-i18n="common.close">Fechar</button>
+      </div>
+    </div>
+  </div>
+  
+  <!-- QR Code Scanner Modal -->
+  <div id="qrcode-scanner-modal" class="modal" style="display: none;">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 data-i18n="qrcode.scanTitle">Escanear QR Code</h2>
+        <button id="qrcode-scanner-modal-close" class="modal-close" style="background: none; border: none; cursor: pointer; font-size: 24px; color: #999;">✕</button>
+      </div>
+      <div class="modal-body">
+        <div id="qr-scanner" style="width: 100%; max-width: 300px; height: 300px; border: 2px solid var(--border); border-radius: 8px; overflow: hidden;"></div>
+        <p class="qrcode-info" data-i18n="qrcode.scanInfo">Aponte a câmera para o QR code de um amigo.</p>
+        <input id="qr-scanner-result" type="text" placeholder="Chave pública será preenchida aqui…" readonly style="width: 100%; margin-top: 12px; padding: 8px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; color: var(--text);" />
+      </div>
+      <div class="modal-footer">
+        <button id="qrcode-scanner-modal-use" class="primary" data-i18n="qrcode.useBtn" style="display: none;">Usar</button>
+        <button id="qrcode-scanner-modal-close-btn" data-i18n="common.close">Fechar</button>
+      </div>
+    </div>
+  </div>
 </body>
 </html>

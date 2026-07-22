@@ -2,19 +2,23 @@
 const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')
+const { EventEmitter } = require('events')
 const paths = require('./paths')
 
 // Agrupa posts em "capítulos" para concentrar o swarm (menos torrents, mais
 // seeders por torrent = distribuição mais rápida) em vez de 1 torrent por post.
 const MAX_POSTS_PER_CHAPTER = 10
 const SEAL_DEBOUNCE_MS = 15000 // um post isolado sai em ~15s; posts em sequência viram 1 capítulo só
+const RATE_LIMIT_MS = 10 * 60 * 1000 // máximo 1 capítulo a cada 10 minutos (defesa Sybil)
 
-class ChapterManager {
+class ChapterManager extends EventEmitter {
   constructor (torrentClient, identity, onSealed) {
+    super()
     this.torrentClient = torrentClient
     this.identity = identity
     this.onSealed = onSealed // callback async (chapterMeta) => void, usado para publicar no DHT
     this._sealTimer = null
+    this._lastSealTime = 0 // timestamp do último capítulo selado (rate limiting)
   }
 
   _openManifestPath () {
@@ -74,6 +78,7 @@ class ChapterManager {
     const manifest = this._readOpenManifest()
     manifest.posts.push(post)
     this._writeOpenManifest(manifest)
+    this.emit('post:added', { postCount: manifest.posts.length, maxPostsPerChapter: MAX_POSTS_PER_CHAPTER })
 
     if (manifest.posts.length >= MAX_POSTS_PER_CHAPTER) {
       this._triggerSeal()
@@ -85,6 +90,18 @@ class ChapterManager {
 
   async _triggerSeal () {
     clearTimeout(this._sealTimer)
+    
+    // Rate limiting: defesa contra Sybil attack
+    const now = Date.now()
+    const timeSinceLastSeal = now - this._lastSealTime
+    if (timeSinceLastSeal < RATE_LIMIT_MS) {
+      const waitMs = RATE_LIMIT_MS - timeSinceLastSeal
+      console.log(`[chapters] rate limit ativo: aguardando ${(waitMs / 1000).toFixed(0)}s antes de próximo seal`)
+      this.emit('chapter:rateLimited', { waitMs })
+      this._sealTimer = setTimeout(() => this._triggerSeal(), waitMs)
+      return
+    }
+    
     try {
       const meta = await this.seal()
       if (meta && this.onSealed) await this.onSealed(meta)
@@ -105,6 +122,8 @@ class ChapterManager {
     const posts = manifest.posts
     const start = posts[0].seq
     const end = posts[posts.length - 1].seq
+    this.emit('chapter:sealing', { postCount: posts.length })
+    
     const chapterHash = crypto.createHash('sha256').update(JSON.stringify(posts)).digest('hex')
     const sig = this.identity.sign(Buffer.from(chapterHash, 'hex')).toString('hex')
 
@@ -122,6 +141,7 @@ class ChapterManager {
       sealedAt: Date.now()
     }
     fs.writeFileSync(path.join(paths.chaptersOwnOpen(), 'chapter.json'), JSON.stringify(chapterFile, null, 2))
+    this.emit('chapter:saved', { postCount: posts.length })
 
     const openDir = paths.chaptersOwnOpen()
     const sealedDir = path.join(paths.chaptersOwnSealed(), `${start}-${end}`)
@@ -131,14 +151,18 @@ class ChapterManager {
     fs.mkdirSync(openDir, { recursive: true })
     fs.mkdirSync(path.join(openDir, 'media'), { recursive: true })
 
+    this.emit('chapter:seeding', { postCount: posts.length })
     const { infohash } = await this.torrentClient.seedFolder(sealedDir)
+    this.emit('chapter:seedingStarted', { postCount: posts.length, infohash })
 
     const entry = { start, end, infohash, chapterHash, sig, prevInfohash, sealedAt: chapterFile.sealedAt }
     index.push(entry)
     this._writeIndex(index)
+    
+    this._lastSealTime = Date.now() // atualiza timestamp para rate limiting
 
     return entry
   }
 }
 
-module.exports = { ChapterManager, MAX_POSTS_PER_CHAPTER, SEAL_DEBOUNCE_MS }
+module.exports = { ChapterManager, MAX_POSTS_PER_CHAPTER, SEAL_DEBOUNCE_MS, RATE_LIMIT_MS }

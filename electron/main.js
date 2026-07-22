@@ -189,6 +189,39 @@ app.whenReady().then(async () => {
   }
 
   registerIpcHandlers()
+  
+  // Configure chapter manager event listeners to emit to renderer
+  socialApp.chapters.on('post:added', (data) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('chapter:post-added', data)
+    }
+  })
+  socialApp.chapters.on('chapter:sealing', (data) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('chapter:sealing', data)
+    }
+  })
+  socialApp.chapters.on('chapter:saved', (data) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('chapter:saved', data)
+    }
+  })
+  socialApp.chapters.on('chapter:seeding', (data) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('chapter:seeding', data)
+    }
+  })
+  socialApp.chapters.on('chapter:seedingStarted', (data) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('chapter:seeding-started', data)
+    }
+  })
+  socialApp.chapters.on('chapter:rateLimited', (data) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('chapter:rate-limited', data)
+    }
+  })
+  
   createWindow()
 
   app.on('activate', () => {
