@@ -4,13 +4,45 @@ const path = require('path')
 const paths = require('./paths')
 
 /**
+ * Verifica se um post foi selado em um capítulo publicado
+ */
+function isPostSealed (ownChainSeq) {
+  const indexPath = paths.chaptersOwnIndex()
+  if (!fs.existsSync(indexPath)) return false
+  
+  try {
+    const index = JSON.parse(fs.readFileSync(indexPath, 'utf8'))
+    // Verifica se o seq do post cai dentro de algum range de capítulo selado
+    return index.some(chapter => ownChainSeq >= chapter.start && ownChainSeq <= chapter.end)
+  } catch {
+    return false
+  }
+}
+
+/**
  * Monta o feed agregando a cadeia própria + os posts já ingeridos dos
  * usuários seguidos (feedCache), ordenado do mais novo para o mais antigo.
  */
 function getFeed (store, identity) {
-  const own = store.data.ownChain.map(p => ({ ...p, pubkeyHex: identity.publicKeyHex, isOwn: true }))
-  const others = store.data.feedCache.map(p => ({ ...p, isOwn: false }))
-  return [...own, ...others].sort((a, b) => b.ts - a.ts)
+  const own = store.data.ownChain.map(p => ({ 
+    ...p, 
+    pubkeyHex: identity.publicKeyHex, 
+    isOwn: true,
+    sealed: isPostSealed(p.seq)
+  }))
+  const others = store.data.feedCache.map(p => ({ ...p, isOwn: false, sealed: true }))
+  const combined = [...own, ...others]
+  
+  // Deduplica: remove posts duplicados (mesmo pubkey + seq)
+  const seen = new Set()
+  const deduped = combined.filter(p => {
+    const key = `${p.pubkeyHex}:${p.seq}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+  
+  return deduped.sort((a, b) => b.ts - a.ts)
 }
 
 function findFileRecursive (rootDir, predicate) {
@@ -43,4 +75,4 @@ function resolveMediaPath (pubkeyHex, isOwn, sha256) {
   return findFileRecursive(path.join(paths.cacheRoot(), pubkeyHex), matches)
 }
 
-module.exports = { getFeed, resolveMediaPath }
+module.exports = { getFeed, resolveMediaPath, isPostSealed }

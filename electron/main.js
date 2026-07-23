@@ -76,6 +76,8 @@ function registerIpcHandlers () {
 
   ipcMain.handle('follow:remove', (_e, { pubkeyHex }) => socialApp.removeFollow(pubkeyHex))
 
+  ipcMain.handle('post:delete', (_e, { seq }) => socialApp.deletePost(seq))
+
   ipcMain.handle('stats:get', () => socialApp.getStats())
 
   ipcMain.handle('dialog:pickImages', async () => {

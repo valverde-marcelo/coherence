@@ -173,6 +173,21 @@ class App {
     await this.store.save()
   }
 
+  async deletePost (seq) {
+    if (typeof seq !== 'number' || seq < 0) throw new Error('seq inválido')
+    
+    // Verifica se o post foi selado em um capítulo
+    const { isPostSealed } = require('./feed')
+    if (isPostSealed(seq)) {
+      throw new Error('Não é possível deletar posts já publicados. Uma vez selados em um capítulo, eles são distribuídos permanentemente na rede P2P.')
+    }
+    
+    const idx = this.store.data.ownChain.findIndex(p => p.seq === seq)
+    if (idx === -1) throw new Error('post não encontrado')
+    this.store.data.ownChain.splice(idx, 1)
+    await this.store.save()
+  }
+
   setFocusState (state) {
     this.scheduler.setState(state)
   }

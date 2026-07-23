@@ -42,6 +42,10 @@ function switchTab (name) {
 
 async function initLanguageSwitcher () {
   const select = el('language-select')
+  
+  // Limpa opções existentes para evitar duplicação
+  select.innerHTML = ''
+  
   const langs = await window.api.i18n.getAvailableLanguages()
   const currentLang = await window.api.i18n.getCurrentLang()
 
@@ -237,6 +241,36 @@ async function renderPostCard (post) {
   footer.textContent = footerFmt
     .replace('{seq}', post.seq)
     .replace('{hash}', post.hash.slice(0, 12))
+  
+  // Botão de delete (só para posts próprios e NÃO selados)
+  if (post.isOwn && !post.sealed) {
+    const deleteBtn = document.createElement('button')
+    deleteBtn.className = 'delete-post-btn'
+    deleteBtn.textContent = await t('feed.deleteBtn', '🗑️ Excluir')
+    deleteBtn.title = await t('feed.deleteTitle', 'Excluir este post')
+    deleteBtn.addEventListener('click', async () => {
+      const confirmMsg = await t('feed.deleteConfirm', 'Tem certeza que deseja excluir este post?')
+      if (!confirm(confirmMsg)) return
+      try {
+        deleteBtn.disabled = true
+        await window.api.deletePost(post.seq)
+        await refreshFeed()
+      } catch (err) {
+        const errMsg = await t('errors.deleteError', 'Erro ao excluir post:')
+        alert(errMsg + ' ' + err.message)
+      } finally {
+        deleteBtn.disabled = false
+      }
+    })
+    footer.appendChild(deleteBtn)
+  } else if (post.isOwn && post.sealed) {
+    const lockedMsg = document.createElement('span')
+    lockedMsg.className = 'post-sealed-notice'
+    lockedMsg.textContent = await t('feed.sealedNotice', '🔒 Publicado na rede')
+    lockedMsg.title = await t('feed.sealedInfo', 'Este post foi publicado na rede P2P e não pode ser deletado.')
+    footer.appendChild(lockedMsg)
+  }
+  
   card.appendChild(footer)
 
   return card
@@ -363,8 +397,6 @@ async function onUserSearch () {
     box.appendChild(card)
   }
 }
-
-init()
 
 // ===== QR CODE & PROGRESS TRACKING =====
 

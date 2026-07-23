@@ -46,7 +46,12 @@
   "feed": {
     "emptyWithoutFollows": "Nenhum post ainda. Publique algo ou siga alguém pela chave pública.",
     "youLabel": "Você",
-    "postFooterFmt": "seq {seq} · hash {hash}…"
+    "postFooterFmt": "seq {seq} · hash {hash}…",
+    "deleteBtn": "🗑️ Excluir",
+    "deleteTitle": "Excluir este post",
+    "deleteConfirm": "Tem certeza que deseja excluir este post?",
+    "sealedNotice": "🔒 Publicado na rede",
+    "sealedInfo": "Este post foi publicado na rede P2P e não pode ser deletado."
   },
   "stats": {
     "peers": "peers:",
@@ -65,7 +70,8 @@
   "errors": {
     "displayNameError": "Erro ao salvar nome:",
     "publishError": "Erro ao publicar:",
-    "followError": "Erro ao seguir:"
+    "followError": "Erro ao seguir:",
+    "deleteError": "Erro ao excluir post:"
   },
   "dialog": {
     "imagesLabel": "Imagens"

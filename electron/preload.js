@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('api', {
   setDisplayName: (displayName) => ipcRenderer.invoke('profile:setDisplayName', { displayName }),
   searchUsers: (query) => ipcRenderer.invoke('users:search', { query }),
   createPost: (text, mediaPaths) => ipcRenderer.invoke('post:create', { text, mediaPaths }),
+  deletePost: (seq) => ipcRenderer.invoke('post:delete', { seq }),
   getFeed: () => ipcRenderer.invoke('feed:get'),
   listFollows: () => ipcRenderer.invoke('follow:list'),
   addFollow: (pubkeyHex, alias) => ipcRenderer.invoke('follow:add', { pubkeyHex, alias }),

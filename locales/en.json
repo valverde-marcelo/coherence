@@ -46,7 +46,12 @@
   "feed": {
     "emptyWithoutFollows": "No posts yet. Publish something or follow someone by public key.",
     "youLabel": "You",
-    "postFooterFmt": "seq {seq} · hash {hash}…"
+    "postFooterFmt": "seq {seq} · hash {hash}…",
+    "deleteBtn": "🗑️ Delete",
+    "deleteTitle": "Delete this post",
+    "deleteConfirm": "Are you sure you want to delete this post?",
+    "sealedNotice": "🔒 Published on network",
+    "sealedInfo": "This post was published on the P2P network and cannot be deleted."
   },
   "stats": {
     "peers": "peers:",
@@ -65,7 +70,8 @@
   "errors": {
     "displayNameError": "Error saving name:",
     "publishError": "Error publishing:",
-    "followError": "Error following:"
+    "followError": "Error following:",
+    "deleteError": "Error deleting post:"
   },
   "dialog": {
     "imagesLabel": "Images"
