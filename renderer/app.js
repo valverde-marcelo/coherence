@@ -92,6 +92,10 @@ async function init () {
     }, 1500)
   })
 
+  el('qrcode-btn').addEventListener('click', async () => {
+    showQRCodeModal(ownPubkey)
+  })
+
   el('settings-btn').addEventListener('click', () => {
     window.location.href = 'settings.html'
   })
@@ -403,34 +407,63 @@ async function onUserSearch () {
 let currentSealingPostCount = 0
 let maxPostsPerChapter = 10
 
+async function showQRCodeModal (pubkeyHex) {
+  const modal = document.createElement('div')
+  modal.className = 'modal'
+  modal.innerHTML = `
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Sua Chave Pública (QR Code)</h2>
+        <button class="modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="qr-canvas"></div>
+        <p style="margin-top: 20px; word-break: break-all; font-family: monospace; font-size: 12px;">
+          ${pubkeyHex}
+        </p>
+        <p style="margin-top: 10px; font-size: 12px; color: #666;">
+          Compartilhe este QR code ou chave pública com outras pessoas para sincronizar posts via LSD (mesma rede local).
+        </p>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-copy-key" style="padding: 10px 20px; background-color: #4a5f8f; color: #fff; border: none; border-radius: 4px; cursor: pointer;">Copiar Chave</button>
+        <button class="btn-close-modal" style="padding: 10px 20px; background-color: #666; color: #fff; border: none; border-radius: 4px; cursor: pointer;">Fechar</button>
+      </div>
+    </div>
+  `
+  
+  document.body.appendChild(modal)
+  
+  try {
+    const QRCode = await import('qrcode')
+    const canvas = modal.querySelector('#qr-canvas')
+    await QRCode.toCanvas(canvas, `coherence://follow/${pubkeyHex}`, {
+      width: 280,
+      margin: 1,
+      color: { dark: '#000', light: '#fff' }
+    })
+  } catch (err) {
+    console.error('[qrcode] erro:', err)
+    modal.querySelector('#qr-canvas').innerHTML = '<p style="color: red;">Erro ao gerar QR code: ' + err.message + '</p>'
+  }
+  
+  modal.querySelector('.btn-copy-key').addEventListener('click', async () => {
+    await navigator.clipboard.writeText(pubkeyHex)
+    const btn = modal.querySelector('.btn-copy-key')
+    const origText = btn.textContent
+    btn.textContent = 'Copiado!'
+    setTimeout(() => { btn.textContent = origText }, 1500)
+  })
+  
+  const closeModal = () => modal.remove()
+  modal.querySelector('.modal-close').addEventListener('click', closeModal)
+  modal.querySelector('.btn-close-modal').addEventListener('click', closeModal)
+  modal.addEventListener('click', (e) => { if (e.target === modal) closeModal() })
+}
+
 function initQRCodeButton () {
   el('qrcode-btn').addEventListener('click', async () => {
-    const modal = el('qrcode-modal')
-    const canvas = el('qrcode-canvas')
-    canvas.innerHTML = ''
-    
-    try {
-      const QRCode = window.QRCode || (await import('https://cdn.jsdelivr.net/npm/qrcode@latest')).default
-      await QRCode.toCanvas(canvas, `coherence://follow/${ownPubkey}`, { width: 280, margin: 1, color: { dark: '#000', light: '#fff' } })
-      modal.style.display = 'flex'
-    } catch (err) {
-      console.error('[qrcode] erro:', err)
-      alert('Erro ao gerar QR code: ' + err.message)
-    }
-  })
-  
-  el('qrcode-modal-close').addEventListener('click', () => {
-    el('qrcode-modal').style.display = 'none'
-  })
-  el('qrcode-modal-ok').addEventListener('click', () => {
-    el('qrcode-modal').style.display = 'none'
-  })
-  
-  // Close modal on background click
-  el('qrcode-modal').addEventListener('click', (e) => {
-    if (e.target.id === 'qrcode-modal') {
-      el('qrcode-modal').style.display = 'none'
-    }
+    showQRCodeModal(ownPubkey)
   })
 }
 

@@ -17,6 +17,7 @@
     "date-fns": "^4.4.0",
     "extract-zip": "^2.0.1",
     "html5-qrcode": "^2.3.8",
+    "qrcode": "^1.5.3",
     "tweetnacl": "^1.0.3",
     "webtorrent": "^3.0.16"
   },

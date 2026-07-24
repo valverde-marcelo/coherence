@@ -52,15 +52,38 @@ class Store {
   }
 
   // Persiste o estado atual em disco, serializando escritas concorrentes.
+  // Com retry para EPERM (múltiplas instâncias podem escrever simultaneamente).
   save () {
-    this._writeQueue = this._writeQueue.then(() => new Promise((resolve, reject) => {
+    this._writeQueue = this._writeQueue.then(() => this._saveWithRetry())
+    return this._writeQueue
+  }
+
+  _saveWithRetry (attempt = 1, maxAttempts = 5) {
+    return new Promise((resolve, reject) => {
       const tmp = this.file + '.tmp'
       fs.writeFile(tmp, JSON.stringify(this.data, null, 2), err => {
         if (err) return reject(err)
-        fs.rename(tmp, this.file, err2 => err2 ? reject(err2) : resolve())
+        
+        fs.rename(tmp, this.file, err2 => {
+          if (!err2) return resolve()
+          
+          // Se EPERM (concorrência com outra instância), retry com backoff
+          if (err2.code === 'EPERM' && attempt < maxAttempts) {
+            const backoffMs = Math.min(500, attempt * 100)
+            setTimeout(() => {
+              this._saveWithRetry(attempt + 1, maxAttempts)
+                .then(resolve)
+                .catch(reject)
+            }, backoffMs)
+            return
+          }
+          
+          // Limpar tmp se rename falhar
+          try { fs.unlinkSync(tmp) } catch {}
+          reject(err2)
+        })
       })
-    }))
-    return this._writeQueue
+    })
   }
 }
 

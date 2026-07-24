@@ -35,6 +35,16 @@ class TorrentClient {
       maxConns: 100
     })
     this.client.on('error', err => console.error('[torrent] erro do cliente:', err.message))
+    
+    // Log de torrent criado/adicionado
+    this.client.on('torrent', (torrent) => {
+      console.log(`[torrent] novo torrent: ${torrent.infoHash.slice(0, 8)}... (${torrent.files.length} arquivos)`)
+      const onPeerAdded = () => {
+        console.log(`[torrent] peer adicionado a ${torrent.infoHash.slice(0, 8)}: total agora = ${torrent.numPeers}`)
+      }
+      torrent.on('peer', onPeerAdded)
+    })
+    
     return this.client
   }
 

@@ -21,6 +21,26 @@ class ChapterManager extends EventEmitter {
     this._lastSealTime = 0 // timestamp do último capítulo selado (rate limiting)
   }
 
+  /**
+   * Recupera capítulo aberto no init e sela automaticamente se há posts
+   * pendentes (caso app tenha sido fechado durante o débounce).
+   */
+  async recoverPendingChapter () {
+    const manifest = this._readOpenManifest()
+    if (!manifest.posts.length) {
+      console.log('[chapters] nenhum capítulo aberto pendente')
+      return
+    }
+    console.log(`[chapters] recuperando capítulo aberto com ${manifest.posts.length} posts pendentes, selando...`)
+    try {
+      const meta = await this.seal()
+      if (meta && this.onSealed) await this.onSealed(meta)
+      console.log('[chapters] capítulo pendente selado com sucesso no recovery')
+    } catch (err) {
+      console.error('[chapters] erro ao selar capítulo pendente no recovery:', err.message)
+    }
+  }
+
   _openManifestPath () {
     return path.join(paths.chaptersOwnOpen(), 'manifest.json')
   }
@@ -78,13 +98,17 @@ class ChapterManager extends EventEmitter {
     const manifest = this._readOpenManifest()
     manifest.posts.push(post)
     this._writeOpenManifest(manifest)
-    this.emit('post:added', { postCount: manifest.posts.length, maxPostsPerChapter: MAX_POSTS_PER_CHAPTER })
+    const postCount = manifest.posts.length
+    this.emit('post:added', { postCount, maxPostsPerChapter: MAX_POSTS_PER_CHAPTER })
+    console.log(`[chapters] post adicionado: ${postCount}/${MAX_POSTS_PER_CHAPTER} no capítulo aberto`)
 
     if (manifest.posts.length >= MAX_POSTS_PER_CHAPTER) {
+      console.log('[chapters] atingiu limite de posts, selando imediatamente')
       this._triggerSeal()
     } else {
       clearTimeout(this._sealTimer)
       this._sealTimer = setTimeout(() => this._triggerSeal(), SEAL_DEBOUNCE_MS)
+      console.log(`[chapters] débounce acionado: selar em ${SEAL_DEBOUNCE_MS}ms se não houver novos posts`)
     }
   }
 
@@ -96,7 +120,8 @@ class ChapterManager extends EventEmitter {
     const timeSinceLastSeal = now - this._lastSealTime
     if (timeSinceLastSeal < RATE_LIMIT_MS) {
       const waitMs = RATE_LIMIT_MS - timeSinceLastSeal
-      console.log(`[chapters] rate limit ativo: aguardando ${(waitMs / 1000).toFixed(0)}s antes de próximo seal`)
+      const waitSec = (waitMs / 1000).toFixed(0)
+      console.log(`[chapters] rate limit ativo: aguardando ${waitSec}s (${waitMs}ms) antes de próximo seal`)
       this.emit('chapter:rateLimited', { waitMs })
       this._sealTimer = setTimeout(() => this._triggerSeal(), waitMs)
       return
@@ -116,12 +141,17 @@ class ChapterManager extends EventEmitter {
    * WebTorrent. Retorna os metadados do capítulo ou null se não havia posts.
    */
   async seal () {
+    const startTime = Date.now()
     const manifest = this._readOpenManifest()
-    if (!manifest.posts.length) return null
+    if (!manifest.posts.length) {
+      console.log('[chapters] sem posts para selar')
+      return null
+    }
 
     const posts = manifest.posts
     const start = posts[0].seq
     const end = posts[posts.length - 1].seq
+    console.log(`[chapters] selando capítulo: posts ${start}-${end} (${posts.length} posts)`)
     this.emit('chapter:sealing', { postCount: posts.length })
     
     const chapterHash = crypto.createHash('sha256').update(JSON.stringify(posts)).digest('hex')
@@ -140,19 +170,27 @@ class ChapterManager extends EventEmitter {
       prevInfohash,
       sealedAt: Date.now()
     }
-    fs.writeFileSync(path.join(paths.chaptersOwnOpen(), 'chapter.json'), JSON.stringify(chapterFile, null, 2))
+    const chapterPath = path.join(paths.chaptersOwnOpen(), 'chapter.json')
+    fs.writeFileSync(chapterPath, JSON.stringify(chapterFile, null, 2))
+    console.log(`[chapters] chapter.json gravado em ${chapterPath}`)
     this.emit('chapter:saved', { postCount: posts.length })
 
     const openDir = paths.chaptersOwnOpen()
     const sealedDir = path.join(paths.chaptersOwnSealed(), `${start}-${end}`)
+    console.log(`[chapters] movendo ${openDir} -> ${sealedDir}`)
     fs.renameSync(openDir, sealedDir)
 
     // recria a pasta "open" vazia para os próximos posts
     fs.mkdirSync(openDir, { recursive: true })
     fs.mkdirSync(path.join(openDir, 'media'), { recursive: true })
+    console.log('[chapters] pasta "open" recriada')
 
     this.emit('chapter:seeding', { postCount: posts.length })
+    console.log(`[chapters] iniciando seeding de ${sealedDir}...`)
+    const seedStartTime = Date.now()
     const { infohash } = await this.torrentClient.seedFolder(sealedDir)
+    const seedElapsedMs = Date.now() - seedStartTime
+    console.log(`[chapters] seeding iniciado em ${seedElapsedMs}ms: infohash ${infohash.slice(0, 16)}...`)
     this.emit('chapter:seedingStarted', { postCount: posts.length, infohash })
 
     const entry = { start, end, infohash, chapterHash, sig, prevInfohash, sealedAt: chapterFile.sealedAt }
@@ -160,6 +198,8 @@ class ChapterManager extends EventEmitter {
     this._writeIndex(index)
     
     this._lastSealTime = Date.now() // atualiza timestamp para rate limiting
+    const totalElapsedMs = Date.now() - startTime
+    console.log(`[chapters] capítulo ${start}-${end} selado completamente em ${totalElapsedMs}ms com infohash ${infohash.slice(0, 16)}...`)
 
     return entry
   }

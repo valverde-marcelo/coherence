@@ -65,17 +65,28 @@ function publishPointer (dht, identity, pointerObj, { retries = 6, retryDelayMs 
     let lastErr
     for (let i = 0; i <= retries; i++) {
       try {
-        console.log(`[dht] tentativa ${i + 1}/${retries + 1} de publicar ponteiro`)
-        return await attempt()
+        const startTime = Date.now()
+        console.log(`[dht] tentativa ${i + 1}/${retries + 1} de publicar ponteiro (${v.length} bytes, target: ${targetHex.slice(0, 16)}...)`, {
+          dhtNodeCount: dht._nodes ? dht._nodes.length : 0
+        })
+        const hash = await attempt()
+        const elapsedMs = Date.now() - startTime
+        console.log(`[dht] ponteiro publicado com sucesso em ${elapsedMs}ms, hash: ${hash}`)
+        return hash
       } catch (err) {
         lastErr = err
+        console.warn(`[dht] tentativa ${i + 1} falhou:`, err.message)
         if (dht._tables && typeof dht._tables.remove === 'function') {
           dht._tables.remove(targetHex)
           console.log(`[dht] limpou cache para retry ${i + 1}`)
         }
-        if (i < retries) await new Promise(r => setTimeout(r, retryDelayMs))
+        if (i < retries) {
+          console.log(`[dht] aguardando ${retryDelayMs}ms antes do retry...`)
+          await new Promise(r => setTimeout(r, retryDelayMs))
+        }
       }
     }
+    console.error(`[dht] falha permanente ao publicar ponteiro após ${retries + 1} tentativas:`, lastErr.message)
     throw lastErr
   })()
 }
@@ -90,14 +101,38 @@ function publishPointer (dht, identity, pointerObj, { retries = 6, retryDelayMs 
 function resolvePointer (dht, pubkeyHex) {
   const pubkeyBuf = Buffer.from(pubkeyHex, 'hex')
   const target = crypto.createHash('sha1').update(pubkeyBuf).digest()
+  const targetHex = target.toString('hex')
+  const startTime = Date.now()
+  
   return new Promise((resolve, reject) => {
+    console.log(`[dht] resolvendo pointer para ${pubkeyHex.slice(0, 16)}... (target: ${targetHex.slice(0, 16)}...)`, {
+      dhtNodeCount: dht._nodes ? dht._nodes.length : 0
+    })
+    
     dht.get(target, (err, res) => {
-      if (err) return reject(err)
-      if (!res || !res.v) return resolve(null)
+      const elapsedMs = Date.now() - startTime
+      
+      if (err) {
+        console.error(`[dht] erro ao resolver pointer em ${elapsedMs}ms:`, err.message)
+        return reject(err)
+      }
+      
+      if (!res || !res.v) {
+        console.log(`[dht] pointer não encontrado no DHT em ${elapsedMs}ms (esperado em cold-start ou peer isolado)`)
+        return resolve(null)
+      }
+      
       try {
         const pointer = JSON.parse(res.v.toString('utf8'))
+        console.log(`[dht] pointer resolvido com sucesso em ${elapsedMs}ms:`, {
+          chainSeq: pointer.chainSeq,
+          hasLatest: !!pointer.latest,
+          displayName: pointer.displayName || '(sem nome)',
+          followingCount: pointer.following ? pointer.following.length : 0
+        })
         resolve({ pointer, seq: res.seq })
-      } catch {
+      } catch (parseErr) {
+        console.error(`[dht] erro ao fazer parse do pointer JSON em ${elapsedMs}ms:`, parseErr.message)
         resolve(null)
       }
     })

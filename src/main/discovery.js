@@ -50,8 +50,26 @@ function readOwnChapterIndex () {
 
 async function publishOwnPointer (dht, identity, store) {
   const pointer = buildOwnPointer(store)
-  if (!pointer || !pointer.latest) return null // nada publicado ainda (sem capítulos selados)
-  return dhtLib.publishPointer(dht, identity, pointer)
+  if (!pointer) {
+    console.log('[discovery] sem posts para publicar ainda')
+    return null
+  }
+  if (!pointer.latest) {
+    console.log('[discovery] capítulo aberto ainda não foi selado, nada a publicar')
+    return null
+  }
+  console.log('[discovery] publicando pointer próprio:', { chainSeq: pointer.chainSeq, latestInfohash: pointer.latest.infohash.slice(0, 8) })
+  
+  try {
+    const result = await dhtLib.publishPointer(dht, identity, pointer)
+    console.log('[discovery] pointer publicado com sucesso no DHT')
+    return result
+  } catch (err) {
+    // Em redes isoladas (sem DHT), descoberta será via LSD/PEX quando peers se conectarem
+    console.warn('[discovery] DHT indisponível:', err.message)
+    console.log('[discovery] posts serão descobertos via LSD/PEX quando peers se conectarem na mesma rede')
+    return null
+  }
 }
 
 /**
@@ -60,23 +78,44 @@ async function publishOwnPointer (dht, identity, store) {
  * assinaturas/hashes e ingere os posts no cache local do feed.
  */
 async function pollFollow ({ dht, torrentClient, store }, follow) {
+  const startTime = Date.now()
+  const shortKey = follow.pubkeyHex.slice(0, 8)
+  console.log(`[discovery] poll iniciado para follow ${shortKey}`)
+  
   let resolved
   try {
     resolved = await dhtLib.resolvePointer(dht, follow.pubkeyHex)
   } catch (err) {
-    return { updated: false, error: err.message }
+    console.log(`[discovery] pointer não encontrado via DHT para ${shortKey} (pode estar via LSD/PEX)`)
+    resolved = null
   }
+  
   follow.lastPolledAt = Date.now()
-  if (!resolved || !resolved.pointer) return { updated: false }
+  
+  if (!resolved || !resolved.pointer) {
+    console.log(`[discovery] pointer não encontrado para ${shortKey} (esperado em cold-start ou rede isolada)`)
+    return { updated: false }
+  }
 
   const { pointer } = resolved
+  console.log(`[discovery] pointer resolvido para ${shortKey}:`, { chainSeq: pointer.chainSeq, hasLatest: !!pointer.latest })
+  
   // Nome de exibição e amostra de "quem essa pessoa segue" chegam mesmo que a
   // cadeia de posts não tenha novidade — é assim que a busca de usuários
   // (gossip amigo-de-amigo) se propaga pela rede.
   ingestProfileGossip(store, follow, pointer)
 
-  if (!pointer.latest) return { updated: false }
-  if (follow.lastChainHash === pointer.chainHash) return { updated: false } // nada novo
+  if (!pointer.latest) {
+    console.log(`[discovery] ${shortKey} não tem capítulo publicado ainda`)
+    return { updated: false }
+  }
+  
+  if (follow.lastChainHash === pointer.chainHash) {
+    console.log(`[discovery] ${shortKey} sem novidades (mesmo chainHash)`)
+    return { updated: false }
+  }
+
+  console.log(`[discovery] ${shortKey} tem novidade! chainHash anterior: ${follow.lastChainHash ? follow.lastChainHash.slice(0, 8) : '(nenhum)'} → novo: ${pointer.chainHash.slice(0, 8)}...`)
 
   // Monta a lista de capítulos a baixar andando pelo encadeamento prevInfohash
   // de trás pra frente, até achar o último capítulo já conhecido (ou o limite).
@@ -90,34 +129,57 @@ async function pollFollow ({ dht, torrentClient, store }, follow) {
     safety++
   }
 
+  console.log(`[discovery] ${shortKey} precisa baixar ${toFetch.length} capítulo(s)`)
+
   const destBase = path.join(paths.cacheRoot(), follow.pubkeyHex)
   let ingestedAny = false
   let prevLastPost = findLastKnownPost(store, follow.pubkeyHex)
 
-  for (const item of toFetch) {
+  for (let idx = 0; idx < toFetch.length; idx++) {
+    const item = toFetch[idx]
     const destDir = path.join(destBase, item.infohash)
     let torrent
     try {
+      console.log(`[discovery] baixando capítulo ${idx + 1}/${toFetch.length} (${item.infohash.slice(0, 8)}...) de ${shortKey}`)
       torrent = await torrentClient.downloadChapter(item.infohash, destDir)
+      console.log(`[discovery] capítulo ${item.infohash.slice(0, 8)} baixado com sucesso`)
     } catch (err) {
-      console.error(`[discovery] falha ao baixar capítulo ${item.infohash} de ${follow.pubkeyHex.slice(0, 8)}:`, err.message)
+      console.error(`[discovery] falha ao baixar capítulo ${item.infohash.slice(0, 8)} de ${shortKey}:`, err.message)
       break // para no primeiro erro; tenta de novo no próximo poll
     }
 
     const chapterJsonPath = findChapterJson(destDir)
-    if (!chapterJsonPath) { console.error('[discovery] chapter.json não encontrado em', destDir); break }
+    if (!chapterJsonPath) {
+      console.error('[discovery] chapter.json não encontrado em', destDir)
+      break
+    }
+    
     const chapter = JSON.parse(fs.readFileSync(chapterJsonPath, 'utf8'))
 
-    if (chapter.pubkeyHex !== follow.pubkeyHex) { console.error('[discovery] capítulo com pubkey divergente, ignorando'); break }
+    if (chapter.pubkeyHex !== follow.pubkeyHex) {
+      console.error('[discovery] capítulo com pubkey divergente, ignorando')
+      break
+    }
 
     const computedHash = require('crypto').createHash('sha256').update(JSON.stringify(chapter.posts)).digest('hex')
-    if (computedHash !== chapter.chapterHash) { console.error('[discovery] chapterHash não confere, descartando'); break }
+    if (computedHash !== chapter.chapterHash) {
+      console.error('[discovery] chapterHash não confere, descartando')
+      break
+    }
+    
     const validChapterSig = Identity.verify(Buffer.from(chapter.chapterHash, 'hex'), Buffer.from(chapter.sig, 'hex'), Buffer.from(follow.pubkeyHex, 'hex'))
-    if (!validChapterSig) { console.error('[discovery] assinatura do capítulo inválida, descartando'); break }
+    if (!validChapterSig) {
+      console.error('[discovery] assinatura do capítulo inválida, descartando')
+      break
+    }
 
     const verifyResult = hashchain.verifySequence(chapter.posts, Identity.verify, prevLastPost)
-    if (!verifyResult.ok) { console.error('[discovery] cadeia de posts inválida:', verifyResult.reason); break }
+    if (!verifyResult.ok) {
+      console.error('[discovery] cadeia de posts inválida:', verifyResult.reason)
+      break
+    }
 
+    console.log(`[discovery] ${shortKey} capítulo ${item.infohash.slice(0, 8)} verificado: ${chapter.posts.length} posts, ingesting...`)
     for (const post of chapter.posts) {
       store.data.feedCache.push({ ...post })
     }
@@ -131,6 +193,8 @@ async function pollFollow ({ dht, torrentClient, store }, follow) {
   if (ingestedAny) {
     dedupeFeedCache(store)
     await store.save()
+    const elapsedMs = Date.now() - startTime
+    console.log(`[discovery] poll de ${shortKey} concluído com sucesso em ${elapsedMs}ms: ${toFetch.length} capítulo(s), ${prevLastPost ? prevLastPost.seq + 1 : '?'} posts totais`)
   }
   return { updated: ingestedAny }
 }
