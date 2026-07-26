@@ -88,8 +88,13 @@ const swarm = new Hyperswarm()
 
 // Escuta por novas conexões P2P diretas recebidas
 swarm.on('connection', (socket, peerInfo) => {
-  const host = peerInfo.client ? peerInfo.peer.host : 'Remoto'
-  console.log(`\n⚡ [P2P Direct Engine] Nova conexão estabelecida via Hole Punching/UPnP! IP: ${host}`)
+  // O objeto peerInfo do Hyperswarm NÃO possui uma propriedade ".peer" — ele expõe
+  // publicKey, client, relayAddresses, topics, etc. O IP/porta remotos ficam no
+  // stream UDX de baixo nível, acessível via socket.rawStream.
+  const host = socket.rawStream?.remoteHost || 'desconhecido'
+  const port = socket.rawStream?.remotePort
+  const papel = peerInfo.client ? 'cliente' : 'servidor'
+  console.log(`\n⚡ [P2P Direct Engine] Nova conexão estabelecida via Hole Punching/UPnP! IP: ${host}${port ? ':' + port : ''} (papel: ${papel})`)
 
   // Quando o nó remoto pede a página, enviamos os dados assinados
   socket.on('data', (data) => {
