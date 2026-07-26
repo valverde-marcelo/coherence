@@ -4,3 +4,4 @@ out/
 *.log
 .DS_Store
 identity.json
+my_profile.json
