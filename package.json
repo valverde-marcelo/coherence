@@ -1,0 +1,10 @@
+{
+  "name": "seu-projeto",
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "express": "^5.2.1",
+    "hypercore-crypto": "^3.7.0",
+    "hyperswarm": "^4.17.0"
+  }
+}
