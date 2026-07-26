@@ -5,12 +5,20 @@ import nodeCrypto from 'node:crypto'
 import fs from 'node:fs'
 
 // ====================================================================
-// 1. IDENTIDADE E PÁGINA PESSOAL (Com Assinatura Digital) - CORRIGIDO
+// 1. IDENTIDADE E PÁGINA PESSOAL (Com Assinatura Digital) - SOLUÇÃO DEFINITIVA
 // ====================================================================
 
 const KEY_FILE = './identity.json'
 let keyPair
-let publicKeyHex
+let publicKeyBuffer
+
+// O Node não possui format:'buffer' nem type:'ed25519' em KeyObject.export().
+// Para obter os 32 bytes crus da chave pública Ed25519, exportamos como JWK
+// (formato OKP/RFC 8037) e decodificamos o campo "x", que é a chave em base64url.
+function getRawPublicKey(publicKeyObject) {
+  const jwk = publicKeyObject.export({ format: 'jwk' })
+  return Buffer.from(jwk.x, 'base64url')
+}
 
 // Carrega ou gera o par de chaves Ed25519
 if (fs.existsSync(KEY_FILE)) {
@@ -19,23 +27,27 @@ if (fs.existsSync(KEY_FILE)) {
     publicKey: nodeCrypto.createPublicKey(saved.publicKey),
     privateKey: nodeCrypto.createPrivateKey(saved.privateKey)
   }
-  // Extrai os 32 bytes puros a partir do formato SPKI salvo
-  publicKeyHex = keyPair.publicKey.export({ type: 'spki', format: 'der' }).slice(24).toString('hex')
+  // Exporta nativamente os 32 bytes puros da chave Ed25519 carregada
+  publicKeyBuffer = getRawPublicKey(keyPair.publicKey)
 } else {
   keyPair = nodeCrypto.generateKeyPairSync('ed25519')
   
-  // Salva no arquivo a estrutura PEM completa para reuso
+  // Salva no arquivo a estrutura PEM padrão para persistência segura
   fs.writeFileSync(KEY_FILE, JSON.stringify({
     publicKey: keyPair.publicKey.export({ type: 'spki', format: 'pem' }),
     privateKey: keyPair.privateKey.export({ type: 'pkcs8', format: 'pem' })
   }))
   
-  // CORREÇÃO: Pega o buffer DER e remove os 24 caracteres (12 bytes) de cabeçalho ASN.1
-  publicKeyHex = keyPair.publicKey.export({ type: 'spki', format: 'der' }).slice(12).toString('hex')
+  // Exporta nativamente os 32 bytes puros da chave Ed25519 recém-criada
+  publicKeyBuffer = getRawPublicKey(keyPair.publicKey)
 }
 
-// Agora publicKeyHex terá EXATAMENTE 64 caracteres (32 bytes brutos)
-const topic = crypto.discoveryKey(Buffer.from(publicKeyHex, 'hex'))
+// Chave pública em formato hexadecimal com EXATAMENTE 64 caracteres para o painel web
+const publicKeyHex = publicKeyBuffer.toString('hex')
+
+// Passa o buffer garantido de 32 bytes diretamente para gerar o tópico de descoberta
+const topic = crypto.discoveryKey(publicKeyBuffer)
+
 
 // Perfil local
 const PROFILE_FILE = './my_profile.json'
@@ -53,14 +65,15 @@ function getSignedProfile() {
   const profileData = JSON.parse(fs.readFileSync(PROFILE_FILE))
   const payload = JSON.stringify(profileData)
   
-  const sign = nodeCrypto.createSign('SHA256')
-  sign.update(payload)
-  sign.end()
-  
+  // Ed25519 não suporta a API de streaming Sign/Verify do Node;
+  // o correto é usar crypto.sign(algorithm, data, key) em modo "one-shot",
+  // passando algorithm = null (a curva já faz seu próprio hash internamente).
+  const signature = nodeCrypto.sign(null, Buffer.from(payload), keyPair.privateKey)
+
   return {
     publicKey: publicKeyHex,
     payload: profileData,
-    signature: sign.sign(keyPair.privateKey, 'hex')
+    signature: signature.toString('hex')
   }
 }
 
