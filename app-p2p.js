@@ -5,11 +5,12 @@ import nodeCrypto from 'node:crypto'
 import fs from 'node:fs'
 
 // ====================================================================
-// 1. IDENTIDADE E PÁGINA PESSOAL (Com Assinatura Digital)
+// 1. IDENTIDADE E PÁGINA PESSOAL (Com Assinatura Digital) - CORRIGIDO
 // ====================================================================
 
 const KEY_FILE = './identity.json'
 let keyPair
+let publicKeyHex
 
 // Carrega ou gera o par de chaves Ed25519
 if (fs.existsSync(KEY_FILE)) {
@@ -18,19 +19,23 @@ if (fs.existsSync(KEY_FILE)) {
     publicKey: nodeCrypto.createPublicKey(saved.publicKey),
     privateKey: nodeCrypto.createPrivateKey(saved.privateKey)
   }
+  // Extrai os 32 bytes puros a partir do formato SPKI salvo
+  publicKeyHex = keyPair.publicKey.export({ type: 'spki', format: 'der' }).slice(24).toString('hex')
 } else {
   keyPair = nodeCrypto.generateKeyPairSync('ed25519')
+  
+  // Salva no arquivo a estrutura PEM completa para reuso
   fs.writeFileSync(KEY_FILE, JSON.stringify({
     publicKey: keyPair.publicKey.export({ type: 'spki', format: 'pem' }),
     privateKey: keyPair.privateKey.export({ type: 'pkcs8', format: 'pem' })
   }))
+  
+  // CORREÇÃO: Pega o buffer DER e remove os 24 caracteres (12 bytes) de cabeçalho ASN.1
+  publicKeyHex = keyPair.publicKey.export({ type: 'spki', format: 'der' }).slice(12).toString('hex')
 }
 
-// Chave pública exportada em formato HEX (A "URL/ID" que o usuário compartilha)
-const publicKeyHex = keyPair.publicKey.export({ type: 'spki', format: 'der' }).toString('hex')
-
-// Deriva um Tópico P2P fixo (32 bytes) a partir da Chave Pública usando SHA-256
-const topic = crypto.discoveryKey(crypto.data(Buffer.from(publicKeyHex)))
+// Agora publicKeyHex terá EXATAMENTE 64 caracteres (32 bytes brutos)
+const topic = crypto.discoveryKey(Buffer.from(publicKeyHex, 'hex'))
 
 // Perfil local
 const PROFILE_FILE = './my_profile.json'
