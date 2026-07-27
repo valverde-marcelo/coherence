@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'" />
+<title>Rede P2P</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <div class="app">
+
+    <aside class="rail">
+      <div class="rail-block identity-block">
+        <div class="eyebrow">seu nó</div>
+        <div class="identity-name" id="my-name">—</div>
+        <div class="identity-key" id="my-key" title="Clique para copiar">—</div>
+        <div class="identity-status">
+          <span class="dot dot--online" id="status-dot"></span>
+          <span id="status-text">conectando…</span>
+        </div>
+        <button class="btn btn--ghost btn--small" id="edit-profile-btn" type="button">editar perfil</button>
+      </div>
+
+      <form class="rail-block" id="profile-form" hidden>
+        <div class="eyebrow">editar perfil</div>
+        <label class="field">
+          <span>nome</span>
+          <input type="text" id="profile-nome" maxlength="60" />
+        </label>
+        <label class="field">
+          <span>bio</span>
+          <textarea id="profile-bio" maxlength="240" rows="3"></textarea>
+        </label>
+        <div class="form-actions">
+          <button type="submit" class="btn btn--accent btn--small">salvar</button>
+          <button type="button" class="btn btn--ghost btn--small" id="cancel-profile-btn">cancelar</button>
+        </div>
+      </form>
+
+      <div class="rail-block">
+        <div class="eyebrow">seguindo <span id="following-count">(0)</span></div>
+        <form id="follow-form" class="follow-form">
+          <input type="text" id="follow-key" placeholder="colar chave pública (hex)" autocomplete="off" />
+          <button type="submit" class="btn btn--accent btn--small">seguir</button>
+        </form>
+        <p class="form-error" id="follow-error" hidden></p>
+        <ul class="following-list" id="following-list"></ul>
+      </div>
+    </aside>
+
+    <main class="feed-column">
+
+      <form class="composer" id="composer-form">
+        <textarea id="composer-text" placeholder="transmitir algo para a rede…" rows="3"></textarea>
+        <div class="composer-row">
+          <label class="composer-image-label">
+            <input type="file" id="composer-image" accept="image/*" hidden />
+            <span id="composer-image-name">+ imagem</span>
+          </label>
+          <button type="submit" class="btn btn--accent">publicar</button>
+        </div>
+        <p class="form-error" id="composer-error" hidden></p>
+      </form>
+
+      <div class="feed" id="feed">
+        <p class="feed-empty" id="feed-empty" hidden>nenhuma transmissão ainda. publique a primeira, ou siga alguém.</p>
+      </div>
+
+    </main>
+
+  </div>
+
+  <template id="post-template">
+    <article class="post">
+      <header class="post-header">
+        <span class="post-author"></span>
+        <span class="post-time"></span>
+      </header>
+      <div class="post-body"></div>
+      <img class="post-image" hidden />
+      <footer class="post-footer"></footer>
+    </article>
+  </template>
+
+  <template id="peer-template">
+    <li class="peer">
+      <div class="peer-info">
+        <span class="peer-name"></span>
+        <span class="peer-key"></span>
+      </div>
+      <button type="button" class="btn btn--ghost btn--tiny peer-unfollow">deixar de seguir</button>
+    </li>
+  </template>
+
+  <script src="renderer.js"></script>
+</body>
+</html>

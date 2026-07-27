@@ -1,0 +1,21 @@
+{
+  "name": "p2p-social",
+  "version": "0.1.0",
+  "description": "Rede social P2P distribuída - núcleo Hyperswarm/Corestore/Hyperbee + interface Electron",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "test": "node test/test-posts-and-unfollow.js && node test/test-integration-follow-sync.js && node test/test-integration-seeding.js && node test/test-persistence.js"
+  },
+  "dependencies": {
+    "corestore": "^7.11.1",
+    "hyperbee": "^2.27.3",
+    "hypercore": "^11.35.0",
+    "hypercore-crypto": "^3.7.0",
+    "hyperswarm": "^4.17.0"
+  },
+  "devDependencies": {
+    "electron": "^43.2.0"
+  }
+}
