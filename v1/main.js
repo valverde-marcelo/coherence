@@ -51,6 +51,7 @@ async function main() {
   // dataDir correto para um app instalado: pasta de dados do usuário do SO,
   // não o diretório relativo './' usado no protótipo original.
   node = new P2PNode({ dataDir: app.getPath('userData') })
+  console.log('Iniciando nó P2P com storage em', node.dataDir)
 
   node.on('feed-updated', forward('p2p:event:feed-updated'))
   node.on('profile-updated', forward('p2p:event:profile-updated'))
