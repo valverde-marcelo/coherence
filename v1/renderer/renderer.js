@@ -266,18 +266,15 @@ async function showProfileView(pubKeyHex) {
   try {
     currentViewingProfileKey = pubKeyHex
     
-    // Cache profile
-    let profile = profileCache[pubKeyHex]
-    if (!profile) {
-      profile = await window.p2p.getProfileOf(pubKeyHex)
-      if (profile) profileCache[pubKeyHex] = profile
-    }
+    // Sempre buscar profile fresco (não usar cache antigo)
+    const profile = await window.p2p.getProfileOf(pubKeyHex)
+    if (profile) profileCache[pubKeyHex] = profile
     
     const posts = await window.p2p.getPostsOf(pubKeyHex)
     
     if (!profile) {
-      console.error('Perfil não encontrado')
-      return
+      console.warn('Perfil não disponível ainda')
+      // Continuar mesmo sem profile, pode estar sincronizando
     }
 
     // Hide feed and other views, show profile view
@@ -322,7 +319,7 @@ async function showProfileView(pubKeyHex) {
     
     const name = document.createElement('div')
     name.className = 'profile-view-name'
-    name.textContent = profile.nome || 'sem nome'
+    name.textContent = profile?.nome || 'carregando…'
     info.appendChild(name)
     
     const key = document.createElement('div')
@@ -333,14 +330,14 @@ async function showProfileView(pubKeyHex) {
     key.addEventListener('click', () => copyToClipboard(pubKeyHex))
     info.appendChild(key)
     
-    if (profile.bio) {
+    if (profile?.bio) {
       const bio = document.createElement('div')
       bio.className = 'profile-view-bio'
       bio.textContent = profile.bio
       info.appendChild(bio)
     }
     
-    if (profile.links && profile.links.length > 0) {
+    if (profile?.links && profile.links.length > 0) {
       const linksDiv = document.createElement('div')
       linksDiv.className = 'profile-view-links'
       for (const link of profile.links) {
@@ -566,7 +563,7 @@ els.profileForm.addEventListener('submit', async (evt) => {
       links: pendingLinks
     })
     renderIdentity(profile)
-    els.profileForm.hidden = true
+    // Manter formulário visível após salvar
   } catch (err) {
     console.error('Erro ao atualizar perfil:', err)
   }
@@ -580,6 +577,11 @@ els.followForm.addEventListener('submit', async (evt) => {
   try {
     await window.p2p.follow(key)
     els.followKey.value = ''
+    // Limpar cache antigo do novo seguido para garantir dados frescos
+    delete profileCache[key]
+    // Buscar profile fresco
+    const freshProfile = await window.p2p.getProfileOf(key)
+    if (freshProfile) profileCache[key] = freshProfile
     await loadFollowing()
     await loadFeed()
   } catch (err) {
@@ -704,12 +706,31 @@ els.openSearchBtn.addEventListener('click', () => {
 window.p2p.on('following-changed', async () => {
   const list = await window.p2p.getFollowing()
   for (const peer of list) {
-    if (peer.publicKeyHex && !profileCache[peer.publicKeyHex]) {
+    if (peer.publicKeyHex) {
       const profile = await window.p2p.getProfileOf(peer.publicKeyHex)
       if (profile) profileCache[peer.publicKeyHex] = profile
     }
   }
 })
+
+// Polling de perfis a cada 10 segundos para manter cache atualizado
+setInterval(async () => {
+  try {
+    const list = await window.p2p.getFollowing()
+    for (const peer of list) {
+      if (peer.publicKeyHex) {
+        try {
+          const profile = await window.p2p.getProfileOf(peer.publicKeyHex)
+          if (profile) profileCache[peer.publicKeyHex] = profile
+        } catch (err) {
+          // Silenciar erros de polling individual
+        }
+      }
+    }
+  } catch (err) {
+    // Silenciar erros de polling geral
+  }
+}, 10000)
 
 // =====================================================================
 // EVENTOS DO BACKEND
