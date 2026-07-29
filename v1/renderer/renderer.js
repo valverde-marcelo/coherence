@@ -426,9 +426,14 @@ async function loadFollowing() {
 }
 
 async function loadFollowers() {
+  console.log('[loadFollowers] INICIANDO...')
   try {
+    console.log('[loadFollowers] Chamando window.p2p.getFollowers()...')
     const followers = await window.p2p.getFollowers()
+    console.log('[loadFollowers] Recebido array com', followers.length, 'seguidores:', followers.map(f => f.publicKeyHex.slice(0, 12)).join(', '))
+    console.log('[loadFollowers] Chamando renderFollowers()...')
     renderFollowers(followers)
+    console.log('[loadFollowers] CONCLUÍDO')
   } catch (err) {
     console.error('Erro ao carregar seguidores:', err)
   }
@@ -437,6 +442,8 @@ async function loadFollowers() {
 function renderFollowers(followers) {
   els.followersList.innerHTML = ''
   els.followersCount.textContent = `(${followers.length})`
+  
+  console.log('[renderFollowers] Renderizando', followers.length, 'seguidores:', followers.map(f => f.publicKeyHex.slice(0, 12)).join(', '))
   
   if (followers.length === 0) {
     els.followersList.innerHTML = '<p style="font-size: 12px; color: var(--muted); margin-top: 8px;">nenhum seguidor ainda</p>'
@@ -456,6 +463,7 @@ function renderFollowers(followers) {
     // Buscar o nome do seguidor de forma assíncrona
     ;(async () => {
       try {
+        console.log('[renderFollowers] Buscando perfil de:', follower.publicKeyHex.slice(0, 12))
         const profile = await window.p2p.getProfile(follower.publicKeyHex)
         if (profile && profile.nome) {
           nameSpan.textContent = profile.nome
@@ -780,10 +788,12 @@ els.tabFollowing.addEventListener('click', () => {
 })
 
 els.tabFollowers.addEventListener('click', () => {
+  console.log('[tab-followers] Click disparado')
   els.tabFollowers.classList.add('tab-btn--active')
   els.tabFollowing.classList.remove('tab-btn--active')
   els.tabContentFollowers.hidden = false
   els.tabContentFollowing.hidden = true
+  console.log('[tab-followers] Chamando loadFollowers()...')
   loadFollowers()
 })
 
@@ -825,10 +835,14 @@ window.p2p.on('feed-updated', loadFeed)
 window.p2p.on('profile-updated', loadIdentity)
 window.p2p.on('following-changed', () => { loadFollowing(); loadFeed() })
 window.p2p.on('peers-changed', () => {
+  console.log('[peers-changed] evento disparado')
   refreshStatus()
   // Se a aba de seguidores está visível, atualizar
   if (!els.tabContentFollowers.hidden) {
+    console.log('[peers-changed] Aba de seguidores está visível, chamando loadFollowers()')
     loadFollowers()
+  } else {
+    console.log('[peers-changed] Aba de seguidores está HIDDEN, não carregando')
   }
 })
 window.p2p.on('following-status-update', (list) => {
