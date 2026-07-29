@@ -450,7 +450,20 @@ function renderFollowers(followers) {
     const nameSpan = document.createElement('span')
     nameSpan.className = 'follower-name'
     nameSpan.title = follower.publicKeyHex
+    // Inicialmente mostra a chave curta, depois busca o nome
     nameSpan.textContent = shortKey(follower.publicKeyHex)
+    
+    // Buscar o nome do seguidor de forma assíncrona
+    ;(async () => {
+      try {
+        const profile = await window.p2p.getProfile(follower.publicKeyHex)
+        if (profile && profile.nome) {
+          nameSpan.textContent = profile.nome
+        }
+      } catch (err) {
+        console.log('Não foi possível carregar nome do seguidor:', err)
+      }
+    })()
     
     const copyBtn = document.createElement('button')
     copyBtn.type = 'button'

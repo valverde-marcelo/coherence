@@ -117,7 +117,20 @@ class P2PNode extends EventEmitter {
     // qualquer core que este processo já tenha carregado (o próprio +
     // os dos perfis seguidos). Ver nota de privacidade no README: um
     // peer só consegue pedir dados de um core se já souber a chave dele.
+    this.followersSet = new Set()
+    
     this.swarm.on('connection', (socket) => {
+      console.log('[swarm:connection] Socket conectado. Peer remoto:', socket.remotePublicKey?.toString('hex')?.slice(0, 8))
+      if (socket.remotePublicKey) {
+        const followerKey = socket.remotePublicKey.toString('hex')
+        this.followersSet.add(followerKey)
+        console.log('[swarm:connection] Adicionado seguidor:', followerKey.slice(0, 16))
+        
+        // Abrir o core do seguidor para poder ler seu perfil e posts
+        this._ensureFollowerCoreOpen(followerKey).catch((err) => 
+          console.error('[swarm:connection] Erro ao abrir core de seguidor:', err)
+        )
+      }
       this.store.replicate(socket)
       this.emit('peers-changed')
     })
@@ -146,25 +159,6 @@ class P2PNode extends EventEmitter {
     }
 
     await this._joinTopic(this.myCore)
-
-    // Rastrear seguidores (peers conectados ao seu próprio core)
-    this.followersSet = new Set()
-
-    this.myCore.on('peer-add', (peer) => {
-      console.log('[peer-add] Novo peer conectado ao seu core:', peer.publicKey?.toString('hex')?.slice(0, 8))
-      if (peer.publicKey) {
-        this.followersSet.add(peer.publicKey.toString('hex'))
-      }
-      this.emit('peers-changed')
-    })
-
-    this.myCore.on('peer-remove', (peer) => {
-      console.log('[peer-remove] Peer desconectado:', peer.publicKey?.toString('hex')?.slice(0, 8))
-      if (peer.publicKey) {
-        this.followersSet.delete(peer.publicKey.toString('hex'))
-      }
-      this.emit('peers-changed')
-    })
 
     // Reabre a "semeadura" de quem este usuário já seguia em sessões anteriores.
     // Isso é aguardado (não é "fire and forget") para evitar uma corrida em
@@ -203,6 +197,29 @@ class P2PNode extends EventEmitter {
   // ------------------------------------------------------------------
   // Seguir / deixar de seguir
   // ------------------------------------------------------------------
+
+  /** Abre o core de um usuário (seguidor ou seguido) para leitura de perfil/posts, sem adicionar à followList. */
+  async _ensureFollowerCoreOpen(pubKeyHex) {
+    const existing = this.followed.get(pubKeyHex)
+    if (existing) return existing
+
+    try {
+      const core = this.store.get({ key: Buffer.from(pubKeyHex, 'hex') })
+      await core.ready()
+      const bee = new Hyperbee(core, { keyEncoding: 'utf-8', valueEncoding: 'json' })
+
+      const discovery = await this._joinTopic(core)
+
+      // Não adicionar listeners de feed/peers para seguidores que não são explicitamente seguidos
+      const entry = { core, bee, discovery }
+      this.followed.set(pubKeyHex, entry)
+      console.log('[_ensureFollowerCoreOpen] Core aberto para seguidor:', pubKeyHex.slice(0, 16))
+      return entry
+    } catch (err) {
+      console.error('[_ensureFollowerCoreOpen] Erro ao abrir core de seguidor:', err.message)
+      return null
+    }
+  }
 
   async _openFollowed(pubKeyHex) {
     const existing = this.followed.get(pubKeyHex)
