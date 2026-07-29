@@ -2,7 +2,7 @@
 
 const { contextBridge, ipcRenderer } = require('electron')
 
-const EVENTS = ['feed-updated', 'profile-updated', 'following-changed', 'peers-changed']
+const EVENTS = ['feed-updated', 'profile-updated', 'following-changed', 'peers-changed', 'following-status-update']
 
 contextBridge.exposeInMainWorld('p2p', {
   getMyKey: () => ipcRenderer.invoke('p2p:get-my-key'),
@@ -15,6 +15,8 @@ contextBridge.exposeInMainWorld('p2p', {
   getFollowing: () => ipcRenderer.invoke('p2p:get-following'),
   getFeed: (opts) => ipcRenderer.invoke('p2p:get-feed', opts),
   getPeerCount: () => ipcRenderer.invoke('p2p:get-peer-count'),
+  getFollowers: () => ipcRenderer.invoke('p2p:get-followers'),
+  getPostsOf: (key) => ipcRenderer.invoke('p2p:get-posts-of', key),
 
   /** Assina um evento vindo do processo main. Retorna uma função para cancelar a assinatura. */
   on(eventName, callback) {

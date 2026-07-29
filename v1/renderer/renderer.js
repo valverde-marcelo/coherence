@@ -1,42 +1,66 @@
 'use strict'
 
 const els = {
+  // Identity & Profile
   myName: document.getElementById('my-name'),
   myKey: document.getElementById('my-key'),
+  keyText: document.getElementById('key-text'),
+  copyFeedback: document.getElementById('copy-feedback'),
   statusDot: document.getElementById('status-dot'),
   statusText: document.getElementById('status-text'),
+  avatarSection: document.getElementById('avatar-section'),
+  avatarDisplay: document.getElementById('avatar-display'),
+  avatarUpload: document.getElementById('avatar-upload'),
 
-  editProfileBtn: document.getElementById('edit-profile-btn'),
+  // Profile Form
   profileForm: document.getElementById('profile-form'),
   profileNome: document.getElementById('profile-nome'),
   profileBio: document.getElementById('profile-bio'),
-  cancelProfileBtn: document.getElementById('cancel-profile-btn'),
+  addLinkBtn: document.getElementById('add-link-btn'),
+  linksList: document.getElementById('links-list'),
 
+  // Following & Search
   followForm: document.getElementById('follow-form'),
   followKey: document.getElementById('follow-key'),
   followError: document.getElementById('follow-error'),
   followingCount: document.getElementById('following-count'),
   followingList: document.getElementById('following-list'),
 
+  searchSection: document.getElementById('search-section'),
+  searchInput: document.getElementById('search-input'),
+  searchBtn: document.getElementById('search-btn'),
+  searchResults: document.getElementById('search-results'),
+
+  // Composer & Feed
   composerForm: document.getElementById('composer-form'),
   composerText: document.getElementById('composer-text'),
   composerImage: document.getElementById('composer-image'),
   composerImageName: document.getElementById('composer-image-name'),
   composerError: document.getElementById('composer-error'),
-
   feed: document.getElementById('feed'),
   feedEmpty: document.getElementById('feed-empty'),
 
+  // Profile View
+  profileViewContainer: document.getElementById('profile-view-container'),
+  profileView: document.getElementById('profile-view'),
+  backToFeedBtn: document.getElementById('back-to-feed-btn'),
+
+  // Templates
   postTemplate: document.getElementById('post-template'),
-  peerTemplate: document.getElementById('peer-template')
+  peerTemplate: document.getElementById('peer-template'),
+  linkTemplate: document.getElementById('link-template')
 }
 
 let myKey = null
+let currentProfile = null
 let pendingImage = null // { dataBase64, mime, name }
+let pendingLinks = [] // Links sendo editados no profile
+let currentFollowingList = [] // Cache da lista de seguindo com status
+let statusUpdateInterval = null
 
-// ---------------------------------------------------------------------
-// utilidades
-// ---------------------------------------------------------------------
+// =====================================================================
+// UTILIDADES
+// =====================================================================
 
 function shortKey(key) {
   return key.slice(0, 8) + '…' + key.slice(-4)
@@ -70,15 +94,68 @@ function clearError(el) {
   el.textContent = ''
 }
 
-// ---------------------------------------------------------------------
-// renderização
-// ---------------------------------------------------------------------
+function getInitials(name) {
+  return name
+    .split(' ')
+    .map(w => w[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2) || '?'
+}
+
+async function copyToClipboard(text, feedbackEl) {
+  try {
+    await navigator.clipboard.writeText(text)
+    if (feedbackEl) {
+      feedbackEl.hidden = false
+      setTimeout(() => { feedbackEl.hidden = true }, 1500)
+    }
+  } catch (err) {
+    console.error('Erro ao copiar para clipboard:', err)
+  }
+}
+
+// =====================================================================
+// RENDERIZAÇÃO
+// =====================================================================
 
 function renderIdentity(profile) {
+  currentProfile = profile
   els.myName.textContent = profile.nome || 'sem nome'
-  els.myKey.textContent = myKey
+  els.keyText.textContent = myKey
   els.profileNome.value = profile.nome || ''
   els.profileBio.value = profile.bio || ''
+  
+  // Avatar
+  const initials = getInitials(profile.nome || 'Usuário')
+  if (profile.avatar) {
+    const img = document.createElement('img')
+    img.src = `data:${profile.avatar.mime};base64,${profile.avatar.dataBase64}`
+    els.avatarDisplay.innerHTML = ''
+    els.avatarDisplay.appendChild(img)
+  } else {
+    els.avatarDisplay.innerHTML = `<span class="avatar-initials">${initials}</span>`
+  }
+
+  // Links
+  pendingLinks = [...(profile.links || [])]
+  renderLinksList()
+}
+
+function renderLinksList() {
+  els.linksList.innerHTML = ''
+  for (let i = 0; i < pendingLinks.length; i++) {
+    const link = pendingLinks[i]
+    const node = els.linkTemplate.content.cloneNode(true)
+    const titleEl = node.querySelector('.link-title')
+    titleEl.textContent = link.titulo || 'Link'
+    titleEl.href = link.url
+    node.querySelector('.link-remove').addEventListener('click', () => {
+      pendingLinks.splice(i, 1)
+      renderLinksList()
+    })
+    els.linksList.appendChild(node)
+  }
 }
 
 async function refreshStatus() {
@@ -89,17 +166,39 @@ async function refreshStatus() {
 }
 
 function renderFollowing(list) {
+  currentFollowingList = list
   els.followingCount.textContent = `(${list.length})`
   els.followingList.innerHTML = ''
+  
   for (const peer of list) {
     const node = els.peerTemplate.content.cloneNode(true)
-    node.querySelector('.peer-name').textContent = peer.nome || (peer.sincronizando ? 'sincronizando…' : 'sem nome')
+    
+    // Status dot (verde=online, escuro=offline)
+    const statusDot = node.querySelector('.peer-status-dot')
+    const isOnline = peer.peersConectados > 0
+    statusDot.classList.toggle('dot--online', isOnline)
+    statusDot.classList.toggle('dot--offline', !isOnline)
+    
+    // Name (clickable -> profile view)
+    const nameEl = node.querySelector('.peer-name')
+    nameEl.textContent = peer.nome || (peer.sincronizando ? 'sincronizando…' : 'sem nome')
+    nameEl.addEventListener('click', () => showProfileView(peer.publicKeyHex))
+    
+    // Key
     node.querySelector('.peer-key').textContent = shortKey(peer.publicKeyHex)
+    
+    // Copy key button
+    node.querySelector('.peer-copy-key').addEventListener('click', async () => {
+      await copyToClipboard(peer.publicKeyHex)
+    })
+    
+    // Unfollow button
     node.querySelector('.peer-unfollow').addEventListener('click', async () => {
       await window.p2p.unfollow(peer.publicKeyHex)
       await loadFollowing()
       await loadFeed()
     })
+    
     els.followingList.appendChild(node)
   }
 }
@@ -114,6 +213,12 @@ function renderFeed(posts) {
     const isMe = post.autor === myKey
     authorEl.textContent = isMe ? 'você' : shortKey(post.autor)
     authorEl.classList.toggle('is-me', isMe)
+    authorEl.style.cursor = isMe ? 'default' : 'pointer'
+    
+    if (!isMe) {
+      authorEl.addEventListener('click', () => showProfileView(post.autor))
+    }
+    
     node.querySelector('.post-time').textContent = formatTime(post.timestamp)
     node.querySelector('.post-body').textContent = post.texto || ''
 
@@ -128,9 +233,128 @@ function renderFeed(posts) {
   }
 }
 
-// ---------------------------------------------------------------------
-// carregamento de dados
-// ---------------------------------------------------------------------
+// =====================================================================
+// PROFILE VIEW
+// =====================================================================
+
+async function showProfileView(pubKeyHex) {
+  try {
+    const profile = await window.p2p.getProfileOf(pubKeyHex)
+    const posts = await window.p2p.getPostsOf(pubKeyHex)
+    
+    if (!profile) {
+      console.error('Perfil não encontrado')
+      return
+    }
+
+    // Hide feed, show profile view
+    els.composerForm.hidden = true
+    els.feed.hidden = true
+    els.profileViewContainer.hidden = false
+
+    // Render profile
+    els.profileView.innerHTML = ''
+    
+    const header = document.createElement('div')
+    header.className = 'profile-view-header'
+    
+    // Avatar
+    if (profile.avatar) {
+      const avatar = document.createElement('div')
+      avatar.className = 'profile-view-avatar'
+      const img = document.createElement('img')
+      img.src = `data:${profile.avatar.mime};base64,${profile.avatar.dataBase64}`
+      avatar.appendChild(img)
+      header.appendChild(avatar)
+    }
+    
+    // Info
+    const info = document.createElement('div')
+    info.className = 'profile-view-info'
+    
+    const name = document.createElement('div')
+    name.className = 'profile-view-name'
+    name.textContent = profile.nome || 'sem nome'
+    info.appendChild(name)
+    
+    const key = document.createElement('div')
+    key.className = 'profile-view-key'
+    key.textContent = shortKey(pubKeyHex)
+    key.style.cursor = 'pointer'
+    key.title = 'Clique para copiar chave completa'
+    key.addEventListener('click', () => copyToClipboard(pubKeyHex))
+    info.appendChild(key)
+    
+    if (profile.bio) {
+      const bio = document.createElement('div')
+      bio.className = 'profile-view-bio'
+      bio.textContent = profile.bio
+      info.appendChild(bio)
+    }
+    
+    if (profile.links && profile.links.length > 0) {
+      const linksDiv = document.createElement('div')
+      linksDiv.className = 'profile-view-links'
+      for (const link of profile.links) {
+        const a = document.createElement('a')
+        a.href = link.url
+        a.target = '_blank'
+        a.rel = 'noopener'
+        a.textContent = link.titulo || link.url
+        linksDiv.appendChild(a)
+      }
+      info.appendChild(linksDiv)
+    }
+    
+    header.appendChild(info)
+    els.profileView.appendChild(header)
+    
+    // Posts
+    if (posts && posts.length > 0) {
+      const postsDiv = document.createElement('div')
+      postsDiv.className = 'profile-view-posts'
+      
+      const postsTitle = document.createElement('div')
+      postsTitle.className = 'eyebrow'
+      postsTitle.textContent = 'postagens'
+      postsDiv.appendChild(postsTitle)
+      
+      const postsFeed = document.createElement('div')
+      postsFeed.className = 'feed'
+      
+      for (const post of posts.sort((a, b) => b.timestamp - a.timestamp)) {
+        const node = els.postTemplate.content.cloneNode(true)
+        const authorEl = node.querySelector('.post-author')
+        authorEl.textContent = shortKey(post.autor)
+        authorEl.classList.add('is-me')
+        
+        node.querySelector('.post-time').textContent = formatTime(post.timestamp)
+        node.querySelector('.post-body').textContent = post.texto || ''
+
+        if (post.tipo === 'imagem' && post.imagem) {
+          const img = node.querySelector('.post-image')
+          img.src = `data:${post.imagem.mime};base64,${post.imagem.dataBase64}`
+          img.hidden = false
+        }
+
+        node.querySelector('.post-footer').textContent = `#${post.seq}`
+        postsFeed.appendChild(node)
+      }
+      
+      postsDiv.appendChild(postsFeed)
+      els.profileView.appendChild(postsDiv)
+    }
+    
+  } catch (err) {
+    console.error('Erro ao exibir perfil:', err)
+  }
+}
+
+function showFeedView() {
+  els.profileViewContainer.hidden = true
+  els.composerForm.hidden = false
+  els.feed.hidden = false
+}
 
 async function loadIdentity() {
   myKey = await window.p2p.getMyKey()
@@ -149,26 +373,78 @@ async function loadFeed() {
   renderFeed(posts)
 }
 
-// ---------------------------------------------------------------------
-// formulários
-// ---------------------------------------------------------------------
+// =====================================================================
+// FORMULÁRIOS
+// =====================================================================
 
-els.editProfileBtn.addEventListener('click', () => {
-  els.profileForm.hidden = false
+// Avatar Upload
+els.avatarSection.addEventListener('click', () => {
+  els.avatarUpload.click()
 })
-els.cancelProfileBtn.addEventListener('click', () => {
-  els.profileForm.hidden = true
+
+els.avatarUpload.addEventListener('change', async () => {
+  const file = els.avatarUpload.files[0]
+  if (!file) return
+  
+  try {
+    const dataBase64 = await fileToBase64(file)
+    const img = document.createElement('img')
+    img.src = `data:${file.type};base64,${dataBase64}`
+    els.avatarDisplay.innerHTML = ''
+    els.avatarDisplay.appendChild(img)
+    
+    // Save to pending (will be saved with profile)
+    currentProfile.avatar = { dataBase64, mime: file.type }
+  } catch (err) {
+    console.error('Erro ao processar avatar:', err)
+  }
 })
+
+// Key Copy
+els.myKey.addEventListener('click', async () => {
+  await copyToClipboard(myKey, els.copyFeedback)
+})
+
+// Profile Form - Toggle (click nome para editar)
+els.myName.addEventListener('click', () => {
+  els.profileForm.hidden = !els.profileForm.hidden
+})
+
+// Links Manager
+els.addLinkBtn.addEventListener('click', () => {
+  if (pendingLinks.length >= 3) {
+    alert('Máximo de 3 links atingido')
+    return
+  }
+  
+  const titulo = prompt('Título do link:')
+  if (!titulo) return
+  
+  const url = prompt('URL:')
+  if (!url) return
+  
+  pendingLinks.push({ titulo: titulo.trim(), url: url.trim() })
+  renderLinksList()
+})
+
+// Profile Form Submit
 els.profileForm.addEventListener('submit', async (evt) => {
   evt.preventDefault()
-  const profile = await window.p2p.updateProfile({
-    nome: els.profileNome.value.trim(),
-    bio: els.profileBio.value.trim()
-  })
-  renderIdentity(profile)
-  els.profileForm.hidden = true
+  try {
+    const profile = await window.p2p.updateProfile({
+      nome: els.profileNome.value.trim(),
+      bio: els.profileBio.value.trim(),
+      avatar: currentProfile.avatar,
+      links: pendingLinks
+    })
+    renderIdentity(profile)
+    els.profileForm.hidden = true
+  } catch (err) {
+    console.error('Erro ao atualizar perfil:', err)
+  }
 })
 
+// Follow Form
 els.followForm.addEventListener('submit', async (evt) => {
   evt.preventDefault()
   clearError(els.followError)
@@ -183,6 +459,7 @@ els.followForm.addEventListener('submit', async (evt) => {
   }
 })
 
+// Composer Image
 els.composerImage.addEventListener('change', async () => {
   const file = els.composerImage.files[0]
   if (!file) {
@@ -197,6 +474,7 @@ els.composerImage.addEventListener('change', async () => {
   els.composerImageName.classList.add('has-image')
 })
 
+// Composer Submit
 els.composerForm.addEventListener('submit', async (evt) => {
   evt.preventDefault()
   clearError(els.composerError)
@@ -224,18 +502,67 @@ els.composerForm.addEventListener('submit', async (evt) => {
   }
 })
 
-// ---------------------------------------------------------------------
-// eventos vindos do processo main
-// ---------------------------------------------------------------------
+// Back to Feed
+els.backToFeedBtn.addEventListener('click', showFeedView)
+
+// Search
+els.searchBtn.addEventListener('click', () => {
+  const query = els.searchInput.value.trim().toLowerCase()
+  if (!query) return
+  
+  els.searchResults.innerHTML = ''
+  
+  // Search in following list
+  const matches = currentFollowingList.filter(peer =>
+    peer.nome?.toLowerCase().includes(query) ||
+    peer.publicKeyHex.toLowerCase().includes(query)
+  )
+  
+  if (matches.length === 0) {
+    els.searchResults.innerHTML = '<p style="font-size: 12px; color: var(--muted);">Nenhum resultado encontrado</p>'
+    return
+  }
+  
+  const resultsDiv = document.createElement('div')
+  resultsDiv.style.fontSize = '12px'
+  
+  for (const peer of matches) {
+    const item = document.createElement('div')
+    item.style.padding = '6px 0'
+    item.style.borderBottom = '1px solid var(--line)'
+    item.style.cursor = 'pointer'
+    item.style.color = 'var(--relay)'
+    item.textContent = peer.nome || shortKey(peer.publicKeyHex)
+    item.addEventListener('click', () => {
+      showProfileView(peer.publicKeyHex)
+      els.searchInput.value = ''
+      els.searchResults.innerHTML = ''
+    })
+    resultsDiv.appendChild(item)
+  }
+  
+  els.searchResults.appendChild(resultsDiv)
+})
+
+els.searchInput.addEventListener('keypress', (evt) => {
+  if (evt.key === 'Enter') els.searchBtn.click()
+})
+
+// =====================================================================
+// EVENTOS DO BACKEND
+// =====================================================================
 
 window.p2p.on('feed-updated', loadFeed)
 window.p2p.on('profile-updated', loadIdentity)
 window.p2p.on('following-changed', () => { loadFollowing(); loadFeed() })
 window.p2p.on('peers-changed', refreshStatus)
+window.p2p.on('following-status-update', (list) => {
+  renderFollowing(list)
+})
 
-// ---------------------------------------------------------------------
-// boot
-// ---------------------------------------------------------------------
+// =====================================================================
+// BOOT
+// =====================================================================
 
 ;(async () => {
   await loadIdentity()

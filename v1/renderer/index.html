@@ -10,20 +10,34 @@
 
   <div class="app">
 
-    <aside class="rail">
+    <!-- LEFT SIDEBAR: Usuário, Perfil, Links -->
+    <aside class="left-sidebar">
       <div class="rail-block identity-block">
-        <div class="eyebrow">seu nó</div>
         <div class="identity-name" id="my-name">—</div>
-        <div class="identity-key" id="my-key" title="Clique para copiar">—</div>
+        
+        <!-- Avatar Section -->
+        <div id="avatar-section" class="avatar-section" title="Clique para alterar avatar">
+          <div class="avatar-placeholder" id="avatar-display">
+            <span class="avatar-initials">?</span>
+          </div>
+          <input type="file" id="avatar-upload" accept="image/*" hidden />
+        </div>
+
+        <!-- Public Key Display - Copyable -->
+        <div class="identity-key" id="my-key" title="Clique para copiar para área de trabalho">
+          <span id="key-text">—</span>
+          <span id="copy-feedback" hidden class="copy-feedback">copiado!</span>
+        </div>
+
+        <!-- Status Indicator -->
         <div class="identity-status">
           <span class="dot dot--online" id="status-dot"></span>
           <span id="status-text">conectando…</span>
         </div>
-        <button class="btn btn--ghost btn--small" id="edit-profile-btn" type="button">editar perfil</button>
       </div>
 
+      <!-- Profile Edit Form -->
       <form class="rail-block" id="profile-form" hidden>
-        <div class="eyebrow">editar perfil</div>
         <label class="field">
           <span>nome</span>
           <input type="text" id="profile-nome" maxlength="60" />
@@ -32,25 +46,40 @@
           <span>bio</span>
           <textarea id="profile-bio" maxlength="240" rows="3"></textarea>
         </label>
+        
+        <!-- Links Manager -->
+        <div class="links-section">
+          <div class="eyebrow">links (máximo 3)</div>
+          <ul class="links-list" id="links-list"></ul>
+          <button type="button" id="add-link-btn" class="btn btn--ghost btn--small">+ adicionar link</button>
+        </div>
+
+        <!-- Save Button -->
         <div class="form-actions">
           <button type="submit" class="btn btn--accent btn--small">salvar</button>
-          <button type="button" class="btn btn--ghost btn--small" id="cancel-profile-btn">cancelar</button>
         </div>
       </form>
-
-      <div class="rail-block">
-        <div class="eyebrow">seguindo <span id="following-count">(0)</span></div>
-        <form id="follow-form" class="follow-form">
-          <input type="text" id="follow-key" placeholder="colar chave pública (hex)" autocomplete="off" />
-          <button type="submit" class="btn btn--accent btn--small">seguir</button>
-        </form>
-        <p class="form-error" id="follow-error" hidden></p>
-        <ul class="following-list" id="following-list"></ul>
-      </div>
     </aside>
 
-    <main class="feed-column">
+    <!-- CENTER AREA: Search, Composer, Feed, Profile View -->
+    <main class="center-area">
+      <!-- Search Section -->
+      <div id="search-section" class="search-section" hidden>
+        <div class="eyebrow">pesquisar usuários</div>
+        <div class="search-form">
+          <input type="text" id="search-input" placeholder="buscar por nome ou chave…" />
+          <button id="search-btn" type="button" class="btn btn--accent btn--small">pesquisar</button>
+        </div>
+        <div id="search-results" class="search-results"></div>
+      </div>
 
+      <!-- Profile View Container (hidden by default) -->
+      <div id="profile-view-container" class="profile-view-container" hidden>
+        <button id="back-to-feed-btn" class="btn btn--ghost btn--small">← voltar</button>
+        <div id="profile-view" class="profile-view"></div>
+      </div>
+
+      <!-- Composer Form -->
       <form class="composer" id="composer-form">
         <textarea id="composer-text" placeholder="transmitir algo para a rede…" rows="3"></textarea>
         <div class="composer-row">
@@ -63,11 +92,24 @@
         <p class="form-error" id="composer-error" hidden></p>
       </form>
 
+      <!-- Feed -->
       <div class="feed" id="feed">
         <p class="feed-empty" id="feed-empty" hidden>nenhuma transmissão ainda. publique a primeira, ou siga alguém.</p>
       </div>
-
     </main>
+
+    <!-- RIGHT SIDEBAR: Following List, Search -->
+    <aside class="right-sidebar">
+      <div class="rail-block">
+        <div class="eyebrow">seguindo <span id="following-count">(0)</span></div>
+        <form id="follow-form" class="follow-form">
+          <input type="text" id="follow-key" placeholder="colar chave pública (hex)" autocomplete="off" />
+          <button type="submit" class="btn btn--accent btn--small">seguir</button>
+        </form>
+        <p class="form-error" id="follow-error" hidden></p>
+        <ul class="following-list" id="following-list"></ul>
+      </div>
+    </aside>
 
   </div>
 
@@ -85,11 +127,26 @@
 
   <template id="peer-template">
     <li class="peer">
+      <div class="peer-status">
+        <span class="dot dot--online peer-status-dot"></span>
+      </div>
       <div class="peer-info">
         <span class="peer-name"></span>
         <span class="peer-key"></span>
       </div>
-      <button type="button" class="btn btn--ghost btn--tiny peer-unfollow">deixar de seguir</button>
+      <div class="peer-actions">
+        <button type="button" class="btn btn--ghost btn--tiny peer-copy-key" title="Copiar chave">📋</button>
+        <button type="button" class="btn btn--ghost btn--tiny peer-unfollow" title="Deixar de seguir">✕</button>
+      </div>
+    </li>
+  </template>
+
+  <template id="link-template">
+    <li class="link-item">
+      <div class="link-content">
+        <a href="#" target="_blank" rel="noopener" class="link-title"></a>
+      </div>
+      <button type="button" class="btn btn--ghost btn--tiny link-remove">✕</button>
     </li>
   </template>
 

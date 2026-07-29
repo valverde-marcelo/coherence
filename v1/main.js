@@ -45,6 +45,8 @@ function registerIpcHandlers() {
   ipcMain.handle('p2p:get-following', () => node.getFollowingList())
   ipcMain.handle('p2p:get-feed', (_evt, opts) => node.getFeed(opts))
   ipcMain.handle('p2p:get-peer-count', () => node.swarm.connections.size)
+  ipcMain.handle('p2p:get-followers', () => node.getFollowers())
+  ipcMain.handle('p2p:get-posts-of', (_evt, key) => node.getPostsOf(key))
 }
 
 async function main() {
@@ -63,11 +65,28 @@ async function main() {
   await node.start()
   console.log('Nó P2P pronto. Chave pública:', node.myPublicKeyHex)
 
+  // Polling a cada 5-10 segundos para atualizar status de quem seguimos
+  const statusUpdateInterval = setInterval(async () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      try {
+        const followingList = await node.getFollowingList()
+        mainWindow.webContents.send('p2p:event:following-status-update', followingList)
+      } catch (err) {
+        console.error('[Status Update Polling]', err)
+      }
+    }
+  }, 7000) // 7 segundos
+
   await app.whenReady()
   await createWindow()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
+  })
+
+  // Limpar polling ao fechar
+  mainWindow.on('closed', () => {
+    clearInterval(statusUpdateInterval)
   })
 }
 

@@ -134,9 +134,15 @@ class P2PNode extends EventEmitter {
         nome: 'Usuário P2P ' + Math.floor(Math.random() * 1000),
         bio: '',
         avatar: null,
+        links: [],
         followList: [],
         updatedAt: Date.now()
       })
+    } else if (!existingProfile.value.links) {
+      // Migração para usuários existentes: adicionar campo links se não existir
+      existingProfile.value.links = []
+      existingProfile.value.updatedAt = Date.now()
+      await this.myBee.put('profile', existingProfile.value)
     }
 
     await this._joinTopic(this.myCore)
@@ -248,12 +254,16 @@ class P2PNode extends EventEmitter {
     return { publicKeyHex: this.myPublicKeyHex, ...(entry ? entry.value : {}) }
   }
 
-  async updateMyProfile({ nome, bio, avatar } = {}) {
+  async updateMyProfile({ nome, bio, avatar, links } = {}) {
     const current = await this.myBee.get('profile')
-    const value = (current && current.value) || { followList: [] }
+    const value = (current && current.value) || { followList: [], links: [] }
     if (nome !== undefined) value.nome = nome
     if (bio !== undefined) value.bio = bio
     if (avatar !== undefined) value.avatar = avatar
+    if (links !== undefined) {
+      // Limitar a máximo 3 links
+      value.links = Array.isArray(links) ? links.slice(0, 3) : []
+    }
     value.updatedAt = Date.now()
     await this.myBee.put('profile', value)
     this.emit('profile-updated')
@@ -280,11 +290,34 @@ class P2PNode extends EventEmitter {
         nome: p && p.nome,
         bio: p && p.bio,
         avatar: p && p.avatar,
+        links: p && p.links,
         sincronizando: !p || !!p.sincronizando,
         peersConectados: entry ? entry.core.peers.length : 0
       }
     }))
     return results
+  }
+
+  /**
+   * Retorna lista de usuários que seguem este usuário.
+   * Por enquanto, retorna uma lista vazia (será preenchida dinamicamente
+   * conforme peers conectam e compartilham seus followLists).
+   * TODO: Implementar descoberta de seguidores via gossip ou DHT query.
+   */
+  async getFollowers() {
+    // Implementação futura: iterar peers conectados e descobrir quem
+    // nos tem em seu followList. Por enquanto, retorna [].
+    return []
+  }
+
+  /** Retorna todos os posts de um usuário específico. */
+  async getPostsOf(pubKeyHex) {
+    if (pubKeyHex === this.myPublicKeyHex) {
+      return this._postsFrom(pubKeyHex, this.myBee)
+    }
+    const entry = this.followed.get(pubKeyHex)
+    if (!entry) return []
+    return this._postsFrom(pubKeyHex, entry.bee)
   }
 
   // ------------------------------------------------------------------
