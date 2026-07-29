@@ -464,7 +464,7 @@ function renderFollowers(followers) {
     ;(async () => {
       try {
         console.log('[renderFollowers] Buscando perfil de:', follower.publicKeyHex.slice(0, 12))
-        const profile = await window.p2p.getProfile(follower.publicKeyHex)
+        const profile = await window.p2p.getProfileOf(follower.publicKeyHex)
         if (profile && profile.nome) {
           nameSpan.textContent = profile.nome
         }

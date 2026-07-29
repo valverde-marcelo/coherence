@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Coherence - Uma rede social P2P descentralizada sem censura, sem servidores centralizados, sem coleta de dados.">
+  <meta name="keywords" content="P2P, Hyperswarm, Hypercore, Rede Social, Descentralizada, Distribuída">
+  <meta name="author" content="Coherence Contributors">
+  <title>Coherence - Rede Social P2P Descentralizada</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --primary: #6366f1;
+      --secondary: #8b5cf6;
+      --dark: #0f172a;
+      --light: #f8fafc;
+      --text: #1e293b;
+      --text-light: #64748b;
+      --border: #e2e8f0;
+      --success: #10b981;
+      --warning: #f59e0b;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+      background: linear-gradient(135deg, var(--dark) 0%, #1e293b 100%);
+      color: var(--text);
+      line-height: 1.6;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 20px;
+    }
+
+    /* Navigation */
+    nav {
+      position: fixed;
+      top: 0;
+      width: 100%;
+      background: rgba(15, 23, 42, 0.95);
+      backdrop-filter: blur(10px);
+      padding: 1rem 0;
+      z-index: 1000;
+      border-bottom: 1px solid var(--border);
+    }
+
+    nav .container {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .logo {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--primary);
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    nav ul {
+      list-style: none;
+      display: flex;
+      gap: 2rem;
+      align-items: center;
+    }
+
+    nav a {
+      color: var(--text-light);
+      text-decoration: none;
+      transition: color 0.3s;
+      font-size: 0.95rem;
+    }
+
+    nav a:hover {
+      color: var(--primary);
+    }
+
+    .btn {
+      display: inline-block;
+      padding: 0.75rem 1.5rem;
+      border-radius: 0.5rem;
+      font-weight: 600;
+      text-decoration: none;
+      transition: all 0.3s;
+      border: none;
+      cursor: pointer;
+      font-size: 1rem;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 25px rgba(99, 102, 241, 0.3);
+    }
+
+    .btn-secondary {
+      background: transparent;
+      color: var(--primary);
+      border: 2px solid var(--primary);
+    }
+
+    .btn-secondary:hover {
+      background: var(--primary);
+      color: white;
+    }
+
+    /* Hero Section */
+    .hero {
+      margin-top: 60px;
+      padding: 6rem 0;
+      color: white;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      right: -10%;
+      width: 600px;
+      height: 600px;
+      background: radial-gradient(circle, var(--secondary) 0%, transparent 70%);
+      opacity: 0.1;
+      z-index: -1;
+    }
+
+    .hero::after {
+      content: '';
+      position: absolute;
+      bottom: -50%;
+      left: -10%;
+      width: 600px;
+      height: 600px;
+      background: radial-gradient(circle, var(--primary) 0%, transparent 70%);
+      opacity: 0.1;
+      z-index: -1;
+    }
+
+    .hero h1 {
+      font-size: 3.5rem;
+      margin-bottom: 1rem;
+      font-weight: 800;
+      background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .hero p {
+      font-size: 1.25rem;
+      color: var(--text-light);
+      margin-bottom: 2rem;
+      max-width: 600px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .hero .cta {
+      display: flex;
+      gap: 1rem;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    /* Features Section */
+    .features {
+      padding: 6rem 0;
+      background: white;
+    }
+
+    .section-title {
+      text-align: center;
+      margin-bottom: 3rem;
+    }
+
+    .section-title h2 {
+      font-size: 2.5rem;
+      margin-bottom: 0.5rem;
+      color: var(--dark);
+    }
+
+    .section-title p {
+      color: var(--text-light);
+      font-size: 1.1rem;
+    }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 2rem;
+    }
+
+    .feature-card {
+      background: var(--light);
+      padding: 2rem;
+      border-radius: 1rem;
+      border: 1px solid var(--border);
+      transition: all 0.3s;
+    }
+
+    .feature-card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+      border-color: var(--primary);
+    }
+
+    .feature-icon {
+      font-size: 2.5rem;
+      margin-bottom: 1rem;
+    }
+
+    .feature-card h3 {
+      font-size: 1.25rem;
+      margin-bottom: 0.5rem;
+      color: var(--dark);
+    }
+
+    .feature-card p {
+      color: var(--text-light);
+    }
+
+    /* Tech Stack Section */
+    .tech-stack {
+      padding: 6rem 0;
+      background: var(--dark);
+      color: white;
+    }
+
+    .tech-stack .section-title h2,
+    .tech-stack .section-title p {
+      color: white;
+    }
+
+    .tech-stack .section-title p {
+      color: var(--text-light);
+    }
+
+    .tech-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 2rem;
+    }
+
+    .tech-item {
+      background: rgba(255, 255, 255, 0.05);
+      padding: 1.5rem;
+      border-radius: 1rem;
+      border: 1px solid rgba(99, 102, 241, 0.2);
+      text-align: center;
+      transition: all 0.3s;
+    }
+
+    .tech-item:hover {
+      background: rgba(99, 102, 241, 0.1);
+      border-color: var(--primary);
+    }
+
+    .tech-item h3 {
+      font-size: 1.1rem;
+      margin-bottom: 0.5rem;
+      color: var(--primary);
+    }
+
+    .tech-item p {
+      font-size: 0.9rem;
+      color: var(--text-light);
+    }
+
+    /* CTA Section */
+    .cta-section {
+      padding: 6rem 0;
+      background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+      color: white;
+      text-align: center;
+      border-radius: 1.5rem;
+      margin: 4rem 0;
+    }
+
+    .cta-section h2 {
+      font-size: 2.5rem;
+      margin-bottom: 1rem;
+    }
+
+    .cta-section p {
+      font-size: 1.1rem;
+      margin-bottom: 2rem;
+    }
+
+    /* Footer */
+    footer {
+      background: var(--dark);
+      color: var(--text-light);
+      padding: 3rem 0;
+      border-top: 1px solid var(--border);
+      text-align: center;
+    }
+
+    .footer-content {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 2rem;
+      margin-bottom: 2rem;
+    }
+
+    .footer-section h3 {
+      color: white;
+      margin-bottom: 1rem;
+    }
+
+    .footer-section ul {
+      list-style: none;
+    }
+
+    .footer-section a {
+      color: var(--text-light);
+      text-decoration: none;
+      transition: color 0.3s;
+      display: block;
+      margin-bottom: 0.5rem;
+    }
+
+    .footer-section a:hover {
+      color: var(--primary);
+    }
+
+    .footer-bottom {
+      border-top: 1px solid var(--border);
+      padding-top: 2rem;
+      color: var(--text-light);
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      nav ul {
+        gap: 1rem;
+      }
+
+      .hero h1 {
+        font-size: 2rem;
+      }
+
+      .hero p {
+        font-size: 1rem;
+      }
+
+      .section-title h2 {
+        font-size: 2rem;
+      }
+
+      .cta-section h2 {
+        font-size: 1.75rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Navigation -->
+  <nav>
+    <div class="container">
+      <a href="#" class="logo">🌐 Coherence</a>
+      <ul>
+        <li><a href="#features">Recursos</a></li>
+        <li><a href="#tech">Tecnologia</a></li>
+        <li><a href="#github">GitHub</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <!-- Hero Section -->
+  <section class="hero">
+    <div class="container">
+      <h1>Comunicação Sem Limites</h1>
+      <p>Uma rede social P2P descentralizada onde você controla seus dados. Sem servidores centralizados, sem censura, sem coleta de dados.</p>
+      <div class="cta">
+        <a href="https://github.com/seu-usuario/coherence" class="btn btn-primary">Começar Agora</a>
+        <a href="#features" class="btn btn-secondary">Saiba Mais</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features Section -->
+  <section class="features" id="features">
+    <div class="container">
+      <div class="section-title">
+        <h2>Por Que Coherence?</h2>
+        <p>Características que fazem a diferença</p>
+      </div>
+
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="feature-icon">🔐</div>
+          <h3>Privacidade Total</h3>
+          <p>Seus dados são seu. Criptografia end-to-end com Ed25519. Ninguém pode acessar sem sua permissão.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon">🌐</div>
+          <h3>Descentralizado</h3>
+          <p>Sem servidor central. Sem empresa coletando dados. Você é o dono completo de sua identidade.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon">⚡</div>
+          <h3>Distribuído</h3>
+          <p>Dados replicados em múltiplos peers. Sem ponto único de falha. A rede continua mesmo se um peer cair.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon">🚀</div>
+          <h3>Rápido</h3>
+          <p>Conexões diretas P2P. Sem latência de servidor. Sincronização em tempo real.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon">✅</div>
+          <h3>Imutável</h3>
+          <p>Posts assinados digitalmente. Histórico completo. Impossível falsificar ou apagar.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon">📱</div>
+          <h3>Interface Moderna</h3>
+          <p>Desktop app com Electron. Interface intuitiva com 3 colunas. Fácil de usar.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Tech Stack Section -->
+  <section class="tech-stack" id="tech">
+    <div class="container">
+      <div class="section-title">
+        <h2>Construído com Tecnologias Modernas</h2>
+        <p>Arquitetura robusta e escalável</p>
+      </div>
+
+      <div class="tech-grid">
+        <div class="tech-item">
+          <h3>🔗 Hyperswarm</h3>
+          <p>Descoberta e conexão P2P entre peers.</p>
+        </div>
+
+        <div class="tech-item">
+          <h3>📝 Hypercore</h3>
+          <p>Logs imutáveis e criptografados para dados.</p>
+        </div>
+
+        <div class="tech-item">
+          <h3>🌳 Hyperbee</h3>
+          <p>Estrutura B-tree distribuída para índices.</p>
+        </div>
+
+        <div class="tech-item">
+          <h3>🖥️ Electron</h3>
+          <p>Interface desktop multiplataforma.</p>
+        </div>
+
+        <div class="tech-item">
+          <h3>🔑 Ed25519</h3>
+          <p>Assinatura digital criptográfica de dados.</p>
+        </div>
+
+        <div class="tech-item">
+          <h3>📦 Node.js</h3>
+          <p>Backend robusto e escalável.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA Section -->
+  <section class="cta-section">
+    <div class="container">
+      <h2>Pronto para se Juntar à Rede?</h2>
+      <p>Comece a usar Coherence hoje e tenha controle total sobre seus dados.</p>
+      <a href="https://github.com/seu-usuario/coherence" class="btn btn-secondary">Acessar GitHub</a>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <div class="container">
+      <div class="footer-content">
+        <div class="footer-section">
+          <h3>Coherence</h3>
+          <p>Uma rede social P2P descentralizada e distribuída.</p>
+        </div>
+
+        <div class="footer-section">
+          <h3>Links</h3>
+          <ul>
+            <li><a href="#features">Recursos</a></li>
+            <li><a href="#tech">Tecnologia</a></li>
+            <li><a href="https://github.com/seu-usuario/coherence">GitHub</a></li>
+            <li><a href="https://github.com/seu-usuario/coherence/issues">Issues</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-section">
+          <h3>Comunidade</h3>
+          <ul>
+            <li><a href="https://github.com/seu-usuario/coherence/discussions">Discussions</a></li>
+            <li><a href="https://github.com/seu-usuario/coherence/wiki">Wiki</a></li>
+            <li><a href="https://github.com/seu-usuario/coherence/blob/main/CONTRIBUTING.md">Contribuir</a></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="footer-bottom">
+        <p>&copy; 2026 Coherence. MIT License. Comunicação sem limites. 🌐</p>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

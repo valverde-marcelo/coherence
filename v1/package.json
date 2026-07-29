@@ -6,6 +6,7 @@
   "private": true,
   "scripts": {
     "start": "electron .",
+    "reset": "node scripts/reset.js",
     "test": "node test/test-posts-and-unfollow.js && node test/test-integration-follow-sync.js && node test/test-integration-seeding.js && node test/test-persistence.js"
   },
   "dependencies": {
