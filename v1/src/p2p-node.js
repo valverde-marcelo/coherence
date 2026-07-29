@@ -120,11 +120,23 @@ class P2PNode extends EventEmitter {
     this.followersSet = new Set()
     
     this.swarm.on('connection', (socket) => {
-      console.log('[swarm:connection] Socket conectado. Peer remoto:', socket.remotePublicKey?.toString('hex')?.slice(0, 8))
+      console.log('[swarm:connection] Socket conectado')
+      console.log('[swarm:connection] Socket properties:', Object.keys(socket).slice(0, 15))
+      console.log('[swarm:connection] remotePublicKey:', socket.remotePublicKey?.toString('hex'))
+      console.log('[swarm:connection] Minha chave:', this.myPublicKeyHex)
+      
       if (socket.remotePublicKey) {
         const followerKey = socket.remotePublicKey.toString('hex')
+        
+        // Não adicionar a si mesmo como seguidor
+        if (followerKey === this.myPublicKeyHex) {
+          console.log('[swarm:connection] Ignorando conexão com a própria chave')
+          this.store.replicate(socket)
+          return
+        }
+        
         this.followersSet.add(followerKey)
-        console.log('[swarm:connection] Adicionado seguidor:', followerKey.slice(0, 16))
+        console.log('[swarm:connection] ✓ Adicionado seguidor:', followerKey.slice(0, 16))
         
         // Abrir o core do seguidor para poder ler seu perfil e posts
         this._ensureFollowerCoreOpen(followerKey).catch((err) => 
