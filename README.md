@@ -66,7 +66,7 @@ coherence/
 
 ```bash
 # Clonar repositório
-git clone https://github.com/seu-usuario/coherence.git
+git clone https://github.com/valverde-marcelo/coherence.git
 cd coherence/v1
 
 # Instalar dependências
