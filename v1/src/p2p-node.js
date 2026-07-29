@@ -118,73 +118,24 @@ class P2PNode extends EventEmitter {
     // os dos perfis seguidos). Ver nota de privacidade no README: um
     // peer só consegue pedir dados de um core se já souber a chave dele.
     this.followersSet = new Set()
-    this.socketToHypercoreMap = new Map()  // Mapeia socket.remotePublicKey → hypercoreKey
     
     this.swarm.on('connection', (socket) => {
-      console.log('[swarm:connection] Socket conectado')
+      const socketKey = socket.remotePublicKey?.toString('hex')
+      console.log('[swarm:connection] Socket conectado de peer:', socketKey?.slice(0, 16))
       
-      // Enviar handshake com minha chave de Hypercore
-      const handshake = JSON.stringify({
-        type: 'handshake',
-        hypercoreKey: this.myPublicKeyHex
-      })
-      socket.write(handshake + '\n')
-      console.log('[swarm:connection] Handshake enviado com chave:', this.myPublicKeyHex.slice(0, 16))
-      
-      // Receber handshake do peer
-      const chunks = []
-      const onData = (chunk) => {
-        chunks.push(chunk)
-        const data = Buffer.concat(chunks).toString()
-        const lines = data.split('\n')
-        
-        for (let i = 0; i < lines.length - 1; i++) {
-          try {
-            const msg = JSON.parse(lines[i])
-            if (msg.type === 'handshake') {
-              const peerHypercoreKey = msg.hypercoreKey
-              const socketKey = socket.remotePublicKey?.toString('hex')
-              
-              console.log('[swarm:connection] Handshake recebido do peer:')
-              console.log('[swarm:connection]   - Socket key:', socketKey?.slice(0, 16))
-              console.log('[swarm:connection]   - Hypercore key:', peerHypercoreKey.slice(0, 16))
-              
-              if (peerHypercoreKey === this.myPublicKeyHex) {
-                console.log('[swarm:connection] Ignorando conexão com a própria chave')
-                socket.removeListener('data', onData)
-                this.store.replicate(socket)
-                return
-              }
-              
-              // Mapear socket key → hypercore key
-              this.socketToHypercoreMap.set(socketKey, peerHypercoreKey)
-              
-              // Adicionar à lista de seguidores usando a chave correta (hypercore)
-              this.followersSet.add(peerHypercoreKey)
-              console.log('[swarm:connection] ✓ Seguidor mapeado e adicionado:', peerHypercoreKey.slice(0, 16))
-              
-              // Abrir o core do seguidor para poder ler seu perfil e posts
-              this._ensureFollowerCoreOpen(peerHypercoreKey).catch((err) => 
-                console.error('[swarm:connection] Erro ao abrir core de seguidor:', err)
-              )
-              
-              socket.removeListener('data', onData)
-              this.emit('peers-changed')
-            }
-          } catch (e) {
-            // Dados não são JSON ainda, aguardar mais
-          }
-        }
-        
-        // Manter apenas a última linha incompleta
-        if (lines.length > 1) {
-          chunks.length = 0
-          chunks.push(Buffer.from(lines[lines.length - 1]))
-        }
-      }
-      
-      socket.on('data', onData)
+      // Adicionar o socket à lista de replicação
       this.store.replicate(socket)
+      
+      // Correlacionar qual seguidor está sincronizando
+      // Quando você segue alguém, esse alguém conecta para sincronizar com você
+      // Verificar qual core do followList está com peers ativos AGORA
+      setTimeout(() => {
+        this._correlateFollowerFromPeers().catch((err) => {
+          console.error('[_correlateFollowerFromPeers] Erro:', err.message)
+        })
+      }, 500)
+      
+      this.emit('peers-changed')
     })
     this.swarm.on('error', (err) => this.emit('error', err))
 
@@ -237,6 +188,39 @@ class P2PNode extends EventEmitter {
   /** Chave pública compartilhável (hex) — é isso que um amigo cola para te seguir. */
   get myPublicKeyHex() {
     return this.myCore.key.toString('hex')
+  }
+
+  /**
+   * Correlaciona qual seguidor estava/está sincronizando analisando quais cores
+   * do followList têm peers ativos neste momento.
+   */
+  async _correlateFollowerFromPeers() {
+    const profile = await this.myBee.get('profile')
+    const followList = (profile && profile.value.followList) || []
+    
+    if (followList.length === 0) return
+    
+    console.log('[_correlateFollowerFromPeers] Analisando', followList.length, 'seguidores para correlacionar...')
+    
+    for (const pubKeyHex of followList) {
+      const followerEntry = this.followed.get(pubKeyHex)
+      if (!followerEntry) {
+        console.log('[_correlateFollowerFromPeers] Core não aberto para:', pubKeyHex.slice(0, 16))
+        continue
+      }
+      
+      const { core } = followerEntry
+      const peersCount = core.peers ? core.peers.length : 0
+      
+      console.log('[_correlateFollowerFromPeers] Core', pubKeyHex.slice(0, 16), '→', peersCount, 'peers')
+      
+      // Se este core tem peers ativos E ainda não está em followersSet, adicionar
+      if (peersCount > 0 && !this.followersSet.has(pubKeyHex)) {
+        console.log('[_correlateFollowerFromPeers] ✓ Correlacionado e adicionado:', pubKeyHex.slice(0, 16))
+        this.followersSet.add(pubKeyHex)
+        return  // Encontrou, pode sair
+      }
+    }
   }
 
   async _joinTopic(core) {
