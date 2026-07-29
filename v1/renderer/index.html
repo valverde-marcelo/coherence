@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'" />
-<title>Rede P2P</title>
+<title>Coherence P2P - Social Network</title>
 <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -99,17 +99,35 @@
       </div>
     </main>
 
-    <!-- RIGHT SIDEBAR: Following List, Search -->
+    <!-- RIGHT SIDEBAR: Following/Followers List -->
     <aside class="right-sidebar">
       <button id="open-search-btn" type="button" class="btn btn--ghost btn--small" style="width: 100%; text-align: left; margin-bottom: 16px;">🔍 pesquisar</button>
-      <div class="rail-block">
-        <div class="eyebrow">seguindo <span id="following-count">(0)</span></div>
-        <form id="follow-form" class="follow-form">
-          <input type="text" id="follow-key" placeholder="colar chave pública (hex)" autocomplete="off" />
-          <button type="submit" class="btn btn--accent btn--small">seguir</button>
-        </form>
-        <p class="form-error" id="follow-error" hidden></p>
-        <ul class="following-list" id="following-list"></ul>
+      
+      <!-- Tabs -->
+      <div class="sidebar-tabs">
+        <button id="tab-following" class="tab-btn tab-btn--active">seguindo</button>
+        <button id="tab-followers" class="tab-btn">seguidores</button>
+      </div>
+      
+      <!-- Following List -->
+      <div id="tab-content-following" class="tab-content">
+        <div class="rail-block">
+          <div class="eyebrow">seguindo <span id="following-count">(0)</span></div>
+          <form id="follow-form" class="follow-form">
+            <input type="text" id="follow-key" placeholder="colar chave pública (hex)" autocomplete="off" />
+            <button type="submit" class="btn btn--accent btn--small">seguir</button>
+          </form>
+          <p class="form-error" id="follow-error" hidden></p>
+          <ul class="following-list" id="following-list"></ul>
+        </div>
+      </div>
+      
+      <!-- Followers List -->
+      <div id="tab-content-followers" class="tab-content" hidden>
+        <div class="rail-block">
+          <div class="eyebrow">seguidores <span id="followers-count">(0)</span></div>
+          <ul class="followers-list" id="followers-list"></ul>
+        </div>
       </div>
     </aside>
 

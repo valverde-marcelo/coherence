@@ -33,6 +33,14 @@ const els = {
   backToFeedFromSearchBtn: document.getElementById('back-to-feed-from-search-btn'),
   openSearchBtn: document.getElementById('open-search-btn'),
 
+  // Right Sidebar Tabs
+  tabFollowing: document.getElementById('tab-following'),
+  tabFollowers: document.getElementById('tab-followers'),
+  tabContentFollowing: document.getElementById('tab-content-following'),
+  tabContentFollowers: document.getElementById('tab-content-followers'),
+  followersList: document.getElementById('followers-list'),
+  followersCount: document.getElementById('followers-count'),
+
   // Composer & Feed
   composerForm: document.getElementById('composer-form'),
   composerText: document.getElementById('composer-text'),
@@ -417,6 +425,54 @@ async function loadFollowing() {
   renderFollowing(list)
 }
 
+async function loadFollowers() {
+  try {
+    const followers = await window.p2p.getFollowers()
+    renderFollowers(followers)
+  } catch (err) {
+    console.error('Erro ao carregar seguidores:', err)
+  }
+}
+
+function renderFollowers(followers) {
+  els.followersList.innerHTML = ''
+  els.followersCount.textContent = `(${followers.length})`
+  
+  if (followers.length === 0) {
+    els.followersList.innerHTML = '<p style="font-size: 12px; color: var(--muted); margin-top: 8px;">nenhum seguidor ainda</p>'
+    return
+  }
+  
+  for (const follower of followers) {
+    const item = document.createElement('li')
+    item.className = 'follower-item'
+    
+    const nameSpan = document.createElement('span')
+    nameSpan.className = 'follower-name'
+    nameSpan.title = follower.publicKeyHex
+    nameSpan.textContent = shortKey(follower.publicKeyHex)
+    
+    const copyBtn = document.createElement('button')
+    copyBtn.type = 'button'
+    copyBtn.className = 'btn btn--ghost btn--tiny'
+    copyBtn.title = 'Copiar chave'
+    copyBtn.textContent = '📋'
+    
+    copyBtn.addEventListener('click', (e) => {
+      e.stopPropagation()
+      copyToClipboard(follower.publicKeyHex)
+    })
+    
+    nameSpan.addEventListener('click', () => {
+      showProfileView(follower.publicKeyHex)
+    })
+    
+    item.appendChild(nameSpan)
+    item.appendChild(copyBtn)
+    els.followersList.appendChild(item)
+  }
+}
+
 async function loadFeed() {
   const posts = await window.p2p.getFeed()
   renderFeed(posts)
@@ -702,6 +758,22 @@ els.openSearchBtn.addEventListener('click', () => {
   els.searchInput.focus()
 })
 
+// Tab Switching
+els.tabFollowing.addEventListener('click', () => {
+  els.tabFollowing.classList.add('tab-btn--active')
+  els.tabFollowers.classList.remove('tab-btn--active')
+  els.tabContentFollowing.hidden = false
+  els.tabContentFollowers.hidden = true
+})
+
+els.tabFollowers.addEventListener('click', () => {
+  els.tabFollowers.classList.add('tab-btn--active')
+  els.tabFollowing.classList.remove('tab-btn--active')
+  els.tabContentFollowers.hidden = false
+  els.tabContentFollowing.hidden = true
+  loadFollowers()
+})
+
 // Auto-populate following list to profile cache
 window.p2p.on('following-changed', async () => {
   const list = await window.p2p.getFollowing()
@@ -739,7 +811,13 @@ setInterval(async () => {
 window.p2p.on('feed-updated', loadFeed)
 window.p2p.on('profile-updated', loadIdentity)
 window.p2p.on('following-changed', () => { loadFollowing(); loadFeed() })
-window.p2p.on('peers-changed', refreshStatus)
+window.p2p.on('peers-changed', () => {
+  refreshStatus()
+  // Se a aba de seguidores está visível, atualizar
+  if (!els.tabContentFollowers.hidden) {
+    loadFollowers()
+  }
+})
 window.p2p.on('following-status-update', (list) => {
   renderFollowing(list)
 })

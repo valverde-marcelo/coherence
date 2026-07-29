@@ -299,15 +299,28 @@ class P2PNode extends EventEmitter {
   }
 
   /**
-   * Retorna lista de usuários que seguem este usuário.
-   * Por enquanto, retorna uma lista vazia (será preenchida dinamicamente
-   * conforme peers conectam e compartilham seus followLists).
-   * TODO: Implementar descoberta de seguidores via gossip ou DHT query.
+   * Retorna lista de usuários que têm se conectado ao seu Hypercore.
+   * Quando alguém o segue, ele se conecta ao seu core para replicar posts.
+   * Retorna peers com suas chaves públicas.
    */
   async getFollowers() {
-    // Implementação futura: iterar peers conectados e descobrir quem
-    // nos tem em seu followList. Por enquanto, retorna [].
-    return []
+    const followers = []
+    
+    if (!this.myCore) return followers
+    
+    // Obter peers conectados ao próprio core
+    const peers = this.myCore.peers || []
+    
+    for (const peer of peers) {
+      if (peer.publicKey) {
+        followers.push({
+          publicKeyHex: peer.publicKey.toString('hex'),
+          isReplicating: peer.uploading || peer.downloading
+        })
+      }
+    }
+    
+    return followers
   }
 
   /** Retorna todos os posts de um usuário específico. */

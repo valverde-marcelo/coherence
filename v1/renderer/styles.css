@@ -575,3 +575,70 @@ button, input, textarea {
   width: 6px;
   height: 6px;
 }
+
+/* Sidebar Tabs */
+.sidebar-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.tab-btn {
+  flex: 1;
+  padding: 8px 4px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  font-size: 11px;
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  transition: all 200ms ease;
+}
+
+.tab-btn:hover {
+  color: var(--relay);
+}
+
+.tab-btn--active {
+  color: var(--relay);
+  border-bottom-color: var(--relay);
+}
+
+.tab-content[hidden] {
+  display: none !important;
+}
+
+.followers-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.follower-item {
+  padding: 8px 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  gap: 6px;
+}
+
+.follower-name {
+  color: var(--relay);
+  cursor: pointer;
+  flex: 1;
+  word-break: break-all;
+  font-family: var(--mono);
+}
+
+.follower-name:hover {
+  color: var(--signal);
+}
