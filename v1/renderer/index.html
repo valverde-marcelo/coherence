@@ -37,7 +37,7 @@
       </div>
 
       <!-- Profile Edit Form -->
-      <form class="rail-block" id="profile-form" hidden>
+      <form class="rail-block" id="profile-form">
         <label class="field">
           <span>nome</span>
           <input type="text" id="profile-nome" maxlength="60" />
@@ -61,11 +61,18 @@
       </form>
     </aside>
 
-    <!-- CENTER AREA: Search, Composer, Feed, Profile View -->
+    <!-- CENTER AREA: Composer, Feed, Profile View, Search View -->
     <main class="center-area">
-      <!-- Search Section -->
-      <div id="search-section" class="search-section" hidden>
-        <div class="eyebrow">pesquisar usuários</div>
+      <!-- Profile View Container (hidden by default) -->
+      <div id="profile-view-container" class="profile-view-container" hidden>
+        <button id="back-to-feed-btn" class="btn btn--ghost btn--small">← voltar</button>
+        <div id="profile-view" class="profile-view"></div>
+      </div>
+
+      <!-- Search View Container (hidden by default) -->
+      <div id="search-view-container" class="search-view-container" hidden>
+        <button id="back-to-feed-from-search-btn" class="btn btn--ghost btn--small">← voltar</button>
+        <div class="eyebrow" style="margin-bottom: 16px;">pesquisar usuários</div>
         <div class="search-form">
           <input type="text" id="search-input" placeholder="buscar por nome ou chave…" />
           <button id="search-btn" type="button" class="btn btn--accent btn--small">pesquisar</button>
@@ -73,13 +80,7 @@
         <div id="search-results" class="search-results"></div>
       </div>
 
-      <!-- Profile View Container (hidden by default) -->
-      <div id="profile-view-container" class="profile-view-container" hidden>
-        <button id="back-to-feed-btn" class="btn btn--ghost btn--small">← voltar</button>
-        <div id="profile-view" class="profile-view"></div>
-      </div>
-
-      <!-- Composer Form -->
+      <!-- Composer Form (only show when viewing feed) -->
       <form class="composer" id="composer-form">
         <textarea id="composer-text" placeholder="transmitir algo para a rede…" rows="3"></textarea>
         <div class="composer-row">
@@ -100,6 +101,7 @@
 
     <!-- RIGHT SIDEBAR: Following List, Search -->
     <aside class="right-sidebar">
+      <button id="open-search-btn" type="button" class="btn btn--ghost btn--small" style="width: 100%; text-align: left; margin-bottom: 16px;">🔍 pesquisar</button>
       <div class="rail-block">
         <div class="eyebrow">seguindo <span id="following-count">(0)</span></div>
         <form id="follow-form" class="follow-form">

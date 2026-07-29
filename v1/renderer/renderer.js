@@ -26,10 +26,12 @@ const els = {
   followingCount: document.getElementById('following-count'),
   followingList: document.getElementById('following-list'),
 
-  searchSection: document.getElementById('search-section'),
+  searchViewContainer: document.getElementById('search-view-container'),
   searchInput: document.getElementById('search-input'),
   searchBtn: document.getElementById('search-btn'),
   searchResults: document.getElementById('search-results'),
+  backToFeedFromSearchBtn: document.getElementById('back-to-feed-from-search-btn'),
+  openSearchBtn: document.getElementById('open-search-btn'),
 
   // Composer & Feed
   composerForm: document.getElementById('composer-form'),
@@ -57,6 +59,8 @@ let pendingImage = null // { dataBase64, mime, name }
 let pendingLinks = [] // Links sendo editados no profile
 let currentFollowingList = [] // Cache da lista de seguindo com status
 let statusUpdateInterval = null
+let profileCache = {} // Cache de perfis para evitar múltiplas requisições
+let currentViewingProfileKey = null // Chave do perfil sendo visualizado
 
 // =====================================================================
 // UTILIDADES
@@ -211,12 +215,33 @@ function renderFeed(posts) {
     const node = els.postTemplate.content.cloneNode(true)
     const authorEl = node.querySelector('.post-author')
     const isMe = post.autor === myKey
-    authorEl.textContent = isMe ? 'você' : shortKey(post.autor)
+    
+    // Buscar nome do autor no cache ou usar chave curta
+    let authorName = isMe ? 'você' : shortKey(post.autor)
+    const cachedProfile = profileCache[post.autor]
+    if (cachedProfile && cachedProfile.nome) {
+      authorName = isMe ? 'você' : cachedProfile.nome
+    }
+    
+    authorEl.textContent = authorName
     authorEl.classList.toggle('is-me', isMe)
     authorEl.style.cursor = isMe ? 'default' : 'pointer'
     
     if (!isMe) {
       authorEl.addEventListener('click', () => showProfileView(post.autor))
+      // Cache author profile quando clicar ou quando renderizar
+      if (!profileCache[post.autor]) {
+        window.p2p.getProfileOf(post.autor).then(p => {
+          if (p) {
+            profileCache[post.autor] = p
+            // Atualizar o nome exibido se o elemento ainda está visível
+            const currentText = authorEl.textContent
+            if (currentText === shortKey(post.autor)) {
+              authorEl.textContent = p.nome || currentText
+            }
+          }
+        }).catch(() => {})
+      }
     }
     
     node.querySelector('.post-time').textContent = formatTime(post.timestamp)
@@ -239,7 +264,15 @@ function renderFeed(posts) {
 
 async function showProfileView(pubKeyHex) {
   try {
-    const profile = await window.p2p.getProfileOf(pubKeyHex)
+    currentViewingProfileKey = pubKeyHex
+    
+    // Cache profile
+    let profile = profileCache[pubKeyHex]
+    if (!profile) {
+      profile = await window.p2p.getProfileOf(pubKeyHex)
+      if (profile) profileCache[pubKeyHex] = profile
+    }
+    
     const posts = await window.p2p.getPostsOf(pubKeyHex)
     
     if (!profile) {
@@ -247,9 +280,10 @@ async function showProfileView(pubKeyHex) {
       return
     }
 
-    // Hide feed, show profile view
+    // Hide feed and other views, show profile view
     els.composerForm.hidden = true
     els.feed.hidden = true
+    els.searchViewContainer.hidden = true
     els.profileViewContainer.hidden = false
 
     // Render profile
@@ -258,15 +292,29 @@ async function showProfileView(pubKeyHex) {
     const header = document.createElement('div')
     header.className = 'profile-view-header'
     
-    // Avatar
+    // Avatar - sempre mostrar (placeholder se não tiver)
+    const avatar = document.createElement('div')
+    avatar.className = 'profile-view-avatar'
     if (profile.avatar) {
-      const avatar = document.createElement('div')
-      avatar.className = 'profile-view-avatar'
       const img = document.createElement('img')
       img.src = `data:${profile.avatar.mime};base64,${profile.avatar.dataBase64}`
       avatar.appendChild(img)
-      header.appendChild(avatar)
+    } else {
+      const placeholder = document.createElement('div')
+      placeholder.style.cssText = `
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(135deg, var(--panel-raised), var(--line));
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 36px;
+        color: var(--relay);
+      `
+      placeholder.textContent = getInitials(profile.nome || 'Usuário')
+      avatar.appendChild(placeholder)
     }
+    header.appendChild(avatar)
     
     // Info
     const info = document.createElement('div')
@@ -323,9 +371,12 @@ async function showProfileView(pubKeyHex) {
       postsFeed.className = 'feed'
       
       for (const post of posts.sort((a, b) => b.timestamp - a.timestamp)) {
+        // Filtrar apenas posts do usuário visualizado
+        if (post.autor !== pubKeyHex) continue
+        
         const node = els.postTemplate.content.cloneNode(true)
         const authorEl = node.querySelector('.post-author')
-        authorEl.textContent = shortKey(post.autor)
+        authorEl.textContent = profile.nome || 'sem nome'
         authorEl.classList.add('is-me')
         
         node.querySelector('.post-time').textContent = formatTime(post.timestamp)
@@ -352,6 +403,7 @@ async function showProfileView(pubKeyHex) {
 
 function showFeedView() {
   els.profileViewContainer.hidden = true
+  els.searchViewContainer.hidden = true
   els.composerForm.hidden = false
   els.feed.hidden = false
 }
@@ -410,22 +462,98 @@ els.myName.addEventListener('click', () => {
   els.profileForm.hidden = !els.profileForm.hidden
 })
 
-// Links Manager
-els.addLinkBtn.addEventListener('click', () => {
-  if (pendingLinks.length >= 3) {
-    alert('Máximo de 3 links atingido')
-    return
-  }
+// Links Manager Modal
+function showLinksModal() {
+  const modal = document.createElement('div')
+  modal.style.cssText = `
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+  `
   
-  const titulo = prompt('Título do link:')
-  if (!titulo) return
+  const modalContent = document.createElement('div')
+  modalContent.style.cssText = `
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 20px;
+    max-width: 400px;
+    width: 90%;
+  `
   
-  const url = prompt('URL:')
-  if (!url) return
+  const title = document.createElement('div')
+  title.className = 'eyebrow'
+  title.textContent = 'adicionar link'
+  modalContent.appendChild(title)
   
-  pendingLinks.push({ titulo: titulo.trim(), url: url.trim() })
-  renderLinksList()
-})
+  const tituloLabel = document.createElement('label')
+  tituloLabel.className = 'field'
+  tituloLabel.innerHTML = '<span>título</span>'
+  const tituloInput = document.createElement('input')
+  tituloInput.type = 'text'
+  tituloInput.maxLength = '30'
+  tituloInput.placeholder = 'ex: Meu Site'
+  tituloLabel.appendChild(tituloInput)
+  modalContent.appendChild(tituloLabel)
+  
+  const urlLabel = document.createElement('label')
+  urlLabel.className = 'field'
+  urlLabel.innerHTML = '<span>URL</span>'
+  const urlInput = document.createElement('input')
+  urlInput.type = 'text'
+  urlInput.placeholder = 'https://exemplo.com'
+  urlLabel.appendChild(urlInput)
+  modalContent.appendChild(urlLabel)
+  
+  const actions = document.createElement('div')
+  actions.className = 'form-actions'
+  actions.style.marginTop = '16px'
+  
+  const addBtn = document.createElement('button')
+  addBtn.type = 'button'
+  addBtn.className = 'btn btn--accent btn--small'
+  addBtn.textContent = 'adicionar'
+  addBtn.addEventListener('click', () => {
+    const titulo = tituloInput.value.trim()
+    const url = urlInput.value.trim()
+    
+    if (!titulo || !url) {
+      alert('Preencha título e URL')
+      return
+    }
+    
+    if (pendingLinks.length >= 3) {
+      alert('Máximo de 3 links atingido')
+      return
+    }
+    
+    pendingLinks.push({ titulo, url })
+    renderLinksList()
+    document.body.removeChild(modal)
+  })
+  actions.appendChild(addBtn)
+  
+  const cancelBtn = document.createElement('button')
+  cancelBtn.type = 'button'
+  cancelBtn.className = 'btn btn--ghost btn--small'
+  cancelBtn.textContent = 'cancelar'
+  cancelBtn.addEventListener('click', () => {
+    document.body.removeChild(modal)
+  })
+  actions.appendChild(cancelBtn)
+  
+  modalContent.appendChild(actions)
+  modal.appendChild(modalContent)
+  document.body.appendChild(modal)
+  
+  tituloInput.focus()
+}
+
+els.addLinkBtn.addEventListener('click', showLinksModal)
 
 // Profile Form Submit
 els.profileForm.addEventListener('submit', async (evt) => {
@@ -502,13 +630,25 @@ els.composerForm.addEventListener('submit', async (evt) => {
   }
 })
 
-// Back to Feed
-els.backToFeedBtn.addEventListener('click', showFeedView)
+// Back to Feed from Profile View
+els.backToFeedBtn.addEventListener('click', () => {
+  showFeedView()
+  currentViewingProfileKey = null
+})
 
-// Search
+// Back to Feed from Search View
+els.backToFeedFromSearchBtn.addEventListener('click', () => {
+  showFeedView()
+  els.searchInput.value = ''
+  els.searchResults.innerHTML = ''
+})
+
+// Search Button
 els.searchBtn.addEventListener('click', () => {
   const query = els.searchInput.value.trim().toLowerCase()
-  if (!query) return
+  if (!query) {
+    return
+  }
   
   els.searchResults.innerHTML = ''
   
@@ -545,7 +685,30 @@ els.searchBtn.addEventListener('click', () => {
 })
 
 els.searchInput.addEventListener('keypress', (evt) => {
-  if (evt.key === 'Enter') els.searchBtn.click()
+  if (evt.key === 'Enter') {
+    evt.preventDefault()
+    els.searchBtn.click()
+  }
+})
+
+// Open Search View
+els.openSearchBtn.addEventListener('click', () => {
+  els.composerForm.hidden = true
+  els.feed.hidden = true
+  els.profileViewContainer.hidden = true
+  els.searchViewContainer.hidden = false
+  els.searchInput.focus()
+})
+
+// Auto-populate following list to profile cache
+window.p2p.on('following-changed', async () => {
+  const list = await window.p2p.getFollowing()
+  for (const peer of list) {
+    if (peer.publicKeyHex && !profileCache[peer.publicKeyHex]) {
+      const profile = await window.p2p.getProfileOf(peer.publicKeyHex)
+      if (profile) profileCache[peer.publicKeyHex] = profile
+    }
+  }
 })
 
 // =====================================================================

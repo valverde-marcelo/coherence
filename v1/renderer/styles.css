@@ -27,6 +27,12 @@
   --radius: 3px;
 }
 
+:root {
+  color-scheme: dark; /* Adapta automaticamente o navegador */
+  scrollbar-color: #555 #1a1a1a; /* [Cor do polegar] [Cor da trilha] */
+  scrollbar-width: thin; /* Deixa a barra mais fina */
+}
+
 * { box-sizing: border-box; }
 
 html, body {
@@ -463,8 +469,13 @@ button, input, textarea {
 }
 
 /* Profile View */
-.profile-view-container {
+.profile-view-container,
+.search-view-container {
   margin-bottom: 20px;
+}
+
+[hidden] {
+  display: none !important;
 }
 
 .profile-view {
