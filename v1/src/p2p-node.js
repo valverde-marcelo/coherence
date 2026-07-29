@@ -147,6 +147,25 @@ class P2PNode extends EventEmitter {
 
     await this._joinTopic(this.myCore)
 
+    // Rastrear seguidores (peers conectados ao seu próprio core)
+    this.followersSet = new Set()
+
+    this.myCore.on('peer-add', (peer) => {
+      console.log('[peer-add] Novo peer conectado ao seu core:', peer.publicKey?.toString('hex')?.slice(0, 8))
+      if (peer.publicKey) {
+        this.followersSet.add(peer.publicKey.toString('hex'))
+      }
+      this.emit('peers-changed')
+    })
+
+    this.myCore.on('peer-remove', (peer) => {
+      console.log('[peer-remove] Peer desconectado:', peer.publicKey?.toString('hex')?.slice(0, 8))
+      if (peer.publicKey) {
+        this.followersSet.delete(peer.publicKey.toString('hex'))
+      }
+      this.emit('peers-changed')
+    })
+
     // Reabre a "semeadura" de quem este usuário já seguia em sessões anteriores.
     // Isso é aguardado (não é "fire and forget") para evitar uma corrida em
     // que um stop() logo após o start() derrubaria o swarm no meio do
@@ -305,21 +324,16 @@ class P2PNode extends EventEmitter {
    */
   async getFollowers() {
     const followers = []
+    if (!this.followersSet) return followers
     
-    if (!this.myCore) return followers
-    
-    // Obter peers conectados ao próprio core
-    const peers = this.myCore.peers || []
-    
-    for (const peer of peers) {
-      if (peer.publicKey) {
-        followers.push({
-          publicKeyHex: peer.publicKey.toString('hex'),
-          isReplicating: peer.uploading || peer.downloading
-        })
-      }
+    for (const pubKeyHex of this.followersSet) {
+      followers.push({
+        publicKeyHex: pubKeyHex,
+        isReplicating: true
+      })
     }
     
+    console.log(`[getFollowers] Retornando ${followers.length} seguidores`)
     return followers
   }
 
