@@ -111,6 +111,9 @@ class P2PNode extends EventEmitter {
     // Mapa para correlacionar socketKey (Hyperswarm) → identityKey (chave real do usuário)
     this.peerIdentityMap = new Map()
     
+    // Rastreiar conexões para registrar apenas seguidores genuínos (persistentes)
+    this.peerConnections = new Map() // socketKey → { identityKey, connectedAt }
+    
     this.ready = false
   }
 
@@ -134,6 +137,7 @@ class P2PNode extends EventEmitter {
     this.swarm.on('connection', (socket) => {
       const socketKey = socket.remotePublicKey?.toString('hex')
       console.log('[swarm:connection] Socket conectado de peer:', socketKey?.slice(0, 16))
+      const connectedAt = Date.now()
       
       // FASE 1: Hand-shake de identidade
       // Enviar nossa identidade como PRIMEIRA mensagem
@@ -162,15 +166,31 @@ class P2PNode extends EventEmitter {
               peerIdentityKey = msg.identityKey
               this.peerIdentityMap.set(socketKey, peerIdentityKey)
               
+              // Rastreiar esta conexão para verificar persistência
+              this.peerConnections.set(socketKey, { identityKey: peerIdentityKey, connectedAt })
+              
               console.log('[swarm:connection:handshake] ✓ Identidade do peer:', peerIdentityKey?.slice(0, 16))
               
               socket.removeListener('data', handleFirstData)
               this.store.replicate(socket)
               
-              // Registrar com a VERDADEIRA identidade do peer
+              // IMPORTANTE: Registrar como seguidor APENAS se conexão persistir por 2+ segundos
+              // Isso evita registrar acessos transitórios para descoberta de dados
               if (peerIdentityKey && peerIdentityKey !== this.myPublicKeyHex) {
-                this._recordFollower(peerIdentityKey).catch((err) => {
-                  console.error('[_recordFollower] Erro:', err.message)
+                const persistenceCheckId = setTimeout(() => {
+                  const conn = this.peerConnections.get(socketKey)
+                  // Se socket ainda está ativo após 2 segundos, registrar como seguidor genuíno
+                  if (conn && !socket.destroyed) {
+                    this._recordFollower(peerIdentityKey).catch((err) => {
+                      console.error('[_recordFollower] Erro:', err.message)
+                    })
+                  }
+                }, 2000)
+                
+                // Limpar timer se socket fechar antes do timeout
+                socket.once('close', () => {
+                  clearTimeout(persistenceCheckId)
+                  this.peerConnections.delete(socketKey)
                 })
               }
               
@@ -185,20 +205,15 @@ class P2PNode extends EventEmitter {
       
       socket.on('data', handleFirstData)
       
-      // FASE 3: Timeout - se não receber handshake, usar socketKey como fallback
+      // FASE 3: Timeout - se não receber handshake em 500ms
       const timeoutId = setTimeout(() => {
         if (!handshakeDone) {
-          console.log('[swarm:connection:handshake] ⚠️ Timeout no handshake, usando socketKey como fallback')
+          console.log('[swarm:connection:handshake] ⚠️ Timeout no handshake (sem identificação)')
           socket.removeListener('data', handleFirstData)
           handshakeDone = true
           
           this.store.replicate(socket)
-          
-          if (socketKey && socketKey !== this.myPublicKeyHex) {
-            this._recordFollower(socketKey).catch((err) => {
-              console.error('[_recordFollower] Erro:', err.message)
-            })
-          }
+          // NÃO registrar como seguidor (conexão anônima/sem handshake)
           
           this.emit('peers-changed')
         }
