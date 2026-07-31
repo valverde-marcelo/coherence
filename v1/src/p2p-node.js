@@ -107,6 +107,10 @@ class P2PNode extends EventEmitter {
     this.myBee = null
     /** @type {Map<string, { core: any, bee: any, discovery: any }>} */
     this.followed = new Map()
+    
+    // Mapa para correlacionar socketKey (Hyperswarm) → identityKey (chave real do usuário)
+    this.peerIdentityMap = new Map()
+    
     this.ready = false
   }
 
@@ -131,17 +135,74 @@ class P2PNode extends EventEmitter {
       const socketKey = socket.remotePublicKey?.toString('hex')
       console.log('[swarm:connection] Socket conectado de peer:', socketKey?.slice(0, 16))
       
-      // Adicionar o socket à lista de replicação
-      this.store.replicate(socket)
+      // FASE 1: Hand-shake de identidade
+      // Enviar nossa identidade como PRIMEIRA mensagem
+      const handshake = JSON.stringify({
+        type: 'handshake',
+        identityKey: this.myPublicKeyHex
+      })
+      socket.write(handshake + '\n')
       
-      // Registrar seguidor quando um peer se conecta ao seu core
-      if (socketKey && socketKey !== this.myPublicKeyHex) {
-        this._recordFollower(socketKey).catch((err) => {
-          console.error('[_recordFollower] Erro:', err.message)
-        })
+      // FASE 2: Aguardar identidade do peer (máx 500ms)
+      let handshakeDone = false
+      let peerIdentityKey = null
+      
+      const handleFirstData = (chunk) => {
+        if (handshakeDone) return
+        
+        try {
+          const str = chunk.toString('utf8').trim()
+          const lines = str.split('\n')
+          const firstLine = lines[0].trim()
+          
+          if (firstLine.startsWith('{')) {
+            const msg = JSON.parse(firstLine)
+            if (msg.type === 'handshake' && msg.identityKey) {
+              handshakeDone = true
+              peerIdentityKey = msg.identityKey
+              this.peerIdentityMap.set(socketKey, peerIdentityKey)
+              
+              console.log('[swarm:connection:handshake] ✓ Identidade do peer:', peerIdentityKey?.slice(0, 16))
+              
+              socket.removeListener('data', handleFirstData)
+              this.store.replicate(socket)
+              
+              // Registrar com a VERDADEIRA identidade do peer
+              if (peerIdentityKey && peerIdentityKey !== this.myPublicKeyHex) {
+                this._recordFollower(peerIdentityKey).catch((err) => {
+                  console.error('[_recordFollower] Erro:', err.message)
+                })
+              }
+              
+              this.emit('peers-changed')
+              return
+            }
+          }
+        } catch (e) {
+          // Erro ao parsear handshake - continuar com fallback
+        }
       }
       
-      this.emit('peers-changed')
+      socket.on('data', handleFirstData)
+      
+      // FASE 3: Timeout - se não receber handshake, usar socketKey como fallback
+      const timeoutId = setTimeout(() => {
+        if (!handshakeDone) {
+          console.log('[swarm:connection:handshake] ⚠️ Timeout no handshake, usando socketKey como fallback')
+          socket.removeListener('data', handleFirstData)
+          handshakeDone = true
+          
+          this.store.replicate(socket)
+          
+          if (socketKey && socketKey !== this.myPublicKeyHex) {
+            this._recordFollower(socketKey).catch((err) => {
+              console.error('[_recordFollower] Erro:', err.message)
+            })
+          }
+          
+          this.emit('peers-changed')
+        }
+      }, 500)
     })
     this.swarm.on('error', (err) => this.emit('error', err))
 
