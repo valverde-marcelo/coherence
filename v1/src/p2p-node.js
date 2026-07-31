@@ -33,6 +33,7 @@ const { loadOrCreateIdentity } = require('./identity')
 
 const POST_PREFIX = 'post!'
 const POST_SEQ_DIGITS = 12
+const FOLLOWERS_PREFIX = 'followers!'
 const MAX_IMAGE_BASE64_BYTES = 400 * 1024 // ~400KB de base64 por imagem (limite v1, ver README)
 const HEX64 = /^[0-9a-f]{64}$/i
 
@@ -42,6 +43,14 @@ function postKey(seq) {
 
 function seqFromPostKey(key) {
   return parseInt(key.slice(POST_PREFIX.length), 10)
+}
+
+function followerKey(pubKeyHex) {
+  return FOLLOWERS_PREFIX + pubKeyHex
+}
+
+function pubKeyFromFollowerKey(key) {
+  return key.slice(FOLLOWERS_PREFIX.length)
 }
 
 /** Resolve com `fallback` se `promise` não terminar em `ms` milissegundos. */
@@ -117,7 +126,6 @@ class P2PNode extends EventEmitter {
     // qualquer core que este processo já tenha carregado (o próprio +
     // os dos perfis seguidos). Ver nota de privacidade no README: um
     // peer só consegue pedir dados de um core se já souber a chave dele.
-    this.followersSet = new Set()
     
     this.swarm.on('connection', (socket) => {
       const socketKey = socket.remotePublicKey?.toString('hex')
@@ -126,14 +134,12 @@ class P2PNode extends EventEmitter {
       // Adicionar o socket à lista de replicação
       this.store.replicate(socket)
       
-      // Correlacionar qual seguidor está sincronizando
-      // Quando você segue alguém, esse alguém conecta para sincronizar com você
-      // Verificar qual core do followList está com peers ativos AGORA
-      setTimeout(() => {
-        this._correlateFollowerFromPeers().catch((err) => {
-          console.error('[_correlateFollowerFromPeers] Erro:', err.message)
+      // Registrar seguidor quando um peer se conecta ao seu core
+      if (socketKey && socketKey !== this.myPublicKeyHex) {
+        this._recordFollower(socketKey).catch((err) => {
+          console.error('[_recordFollower] Erro:', err.message)
         })
-      }, 500)
+      }
       
       this.emit('peers-changed')
     })
@@ -190,39 +196,6 @@ class P2PNode extends EventEmitter {
     return this.myCore.key.toString('hex')
   }
 
-  /**
-   * Correlaciona qual seguidor estava/está sincronizando analisando quais cores
-   * do followList têm peers ativos neste momento.
-   */
-  async _correlateFollowerFromPeers() {
-    const profile = await this.myBee.get('profile')
-    const followList = (profile && profile.value.followList) || []
-    
-    if (followList.length === 0) return
-    
-    console.log('[_correlateFollowerFromPeers] Analisando', followList.length, 'seguidores para correlacionar...')
-    
-    for (const pubKeyHex of followList) {
-      const followerEntry = this.followed.get(pubKeyHex)
-      if (!followerEntry) {
-        console.log('[_correlateFollowerFromPeers] Core não aberto para:', pubKeyHex.slice(0, 16))
-        continue
-      }
-      
-      const { core } = followerEntry
-      const peersCount = core.peers ? core.peers.length : 0
-      
-      console.log('[_correlateFollowerFromPeers] Core', pubKeyHex.slice(0, 16), '→', peersCount, 'peers')
-      
-      // Se este core tem peers ativos E ainda não está em followersSet, adicionar
-      if (peersCount > 0 && !this.followersSet.has(pubKeyHex)) {
-        console.log('[_correlateFollowerFromPeers] ✓ Correlacionado e adicionado:', pubKeyHex.slice(0, 16))
-        this.followersSet.add(pubKeyHex)
-        return  // Encontrou, pode sair
-      }
-    }
-  }
-
   async _joinTopic(core) {
     const discovery = this.swarm.join(core.discoveryKey, { server: true, client: true })
     const done = core.findingPeers()
@@ -230,30 +203,51 @@ class P2PNode extends EventEmitter {
     return discovery
   }
 
-  // ------------------------------------------------------------------
-  // Seguir / deixar de seguir
-  // ------------------------------------------------------------------
-
-  /** Abre o core de um usuário (seguidor ou seguido) para leitura de perfil/posts, sem adicionar à followList. */
-  async _ensureFollowerCoreOpen(pubKeyHex) {
-    const existing = this.followed.get(pubKeyHex)
-    if (existing) return existing
-
+  /**
+   * Registra um seguidor no Hyperbee quando um peer se conecta para replicar o seu core.
+   * Escreve um registro persistente: followers!<pubkey> = { connectedAt, lastSeen, isActive }
+   */
+  async _recordFollower(pubKeyHex) {
     try {
-      const core = this.store.get({ key: Buffer.from(pubKeyHex, 'hex') })
-      await core.ready()
-      const bee = new Hyperbee(core, { keyEncoding: 'utf-8', valueEncoding: 'json' })
-
-      const discovery = await this._joinTopic(core)
-
-      // Não adicionar listeners de feed/peers para seguidores que não são explicitamente seguidos
-      const entry = { core, bee, discovery }
-      this.followed.set(pubKeyHex, entry)
-      console.log('[_ensureFollowerCoreOpen] Core aberto para seguidor:', pubKeyHex.slice(0, 16))
-      return entry
+      const key = followerKey(pubKeyHex)
+      const now = Date.now()
+      const existing = await this.myBee.get(key)
+      
+      const record = existing
+        ? { ...existing.value, lastSeen: now, isActive: true }
+        : { connectedAt: now, lastSeen: now, isActive: true }
+      
+      await this.myBee.put(key, record)
+      console.log('[_recordFollower] ✓ Registrado:', pubKeyHex.slice(0, 16))
     } catch (err) {
-      console.error('[_ensureFollowerCoreOpen] Erro ao abrir core de seguidor:', err.message)
-      return null
+      console.error('[_recordFollower] Erro ao registrar:', err.message)
+    }
+  }
+
+  /**
+   * Carrega todos os registros de seguidores do próprio Hyperbee.
+   * Retorna: [{ publicKeyHex, connectedAt, lastSeen }, ...]
+   */
+  async _loadFollowersFromRecords() {
+    try {
+      const stream = this.myBee.createReadStream({
+        gte: FOLLOWERS_PREFIX,
+        lt: FOLLOWERS_PREFIX + '\uffff'
+      })
+      const entries = await collectWithTimeout(stream, this.readTimeoutMs)
+      
+      const followers = entries
+        .filter((e) => e.value && e.value.isActive)
+        .map((e) => ({
+          publicKeyHex: pubKeyFromFollowerKey(e.key),
+          connectedAt: e.value.connectedAt,
+          lastSeen: e.value.lastSeen
+        }))
+      
+      return followers
+    } catch (err) {
+      console.error('[_loadFollowersFromRecords] Erro:', err.message)
+      return []
     }
   }
 
@@ -386,22 +380,11 @@ class P2PNode extends EventEmitter {
 
   /**
    * Retorna lista de usuários que têm se conectado ao seu Hypercore.
-   * Quando alguém o segue, ele se conecta ao seu core para replicar posts.
-   * Retorna peers com suas chaves públicas.
+   * Lê registros persistentes do Hyperbee (followers!<pubkey>).
    */
   async getFollowers() {
-    const followers = []
-    if (!this.followersSet) return followers
-    
-    for (const pubKeyHex of this.followersSet) {
-      console.log('[getFollowers] Adicionando seguidor:', pubKeyHex.slice(0, 16))
-      followers.push({
-        publicKeyHex: pubKeyHex,
-        isReplicating: true
-      })
-    }
-    
-    console.log(`[getFollowers] Retornando ${followers.length} seguidores (chaves: ${Array.from(this.followersSet).map(k => k.slice(0, 12)).join(', ')})`)
+    const followers = await this._loadFollowersFromRecords()
+    console.log(`[getFollowers] Retornando ${followers.length} seguidores (chaves: ${followers.map(f => f.publicKeyHex.slice(0, 12)).join(', ')})`)
     return followers
   }
 
