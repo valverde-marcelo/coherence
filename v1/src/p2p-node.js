@@ -318,6 +318,7 @@ class P2PNode extends EventEmitter {
   /**
    * Registra um seguidor no Hyperbee quando um peer se conecta para replicar o seu core.
    * Escreve um registro persistente: followers!<pubkey> = { connectedAt, lastSeen, isActive }
+   * Também carrega automaticamente os dados (perfil, posts) do seguidor para exibir na UI.
    */
   async _recordFollower(pubKeyHex) {
     try {
@@ -331,6 +332,13 @@ class P2PNode extends EventEmitter {
       
       await this.myBee.put(key, record)
       console.log('[_recordFollower] ✓ Registrado:', pubKeyHex.slice(0, 16))
+      
+      // Carregar automaticamente os dados do novo seguidor (perfil, posts)
+      // Isso permite que a UI mostre informações do seguidor sem necessidade de follow
+      // Usa _loadFollowerData (não _openFollowed) para evitar enviar follow-request de volta
+      this._loadFollowerData(pubKeyHex).catch((err) => {
+        console.log('[_recordFollower] ⚠️ Erro ao carregar dados do seguidor:', err.message)
+      })
     } catch (err) {
       console.error('[_recordFollower] Erro ao registrar:', err.message)
     }
@@ -363,7 +371,27 @@ class P2PNode extends EventEmitter {
     }
   }
 
+  /**
+   * Carrega os dados de um peer (core + bee) e envia follow-request.
+   * Chamado quando você explicitamente segue alguém.
+   */
   async _openFollowed(pubKeyHex) {
+    const entry = await this._loadFollowerData(pubKeyHex)
+    
+    // Enviar follow-request para todos os peers conectados neste core
+    // Isso indica explicitamente que queremos ser registrados como seguidor
+    this._sendFollowRequestsToPeers(pubKeyHex, entry).catch((err) => {
+      console.log('[_openFollowed] Falha ao enviar follow-requests:', err.message)
+    })
+    
+    return entry
+  }
+
+  /**
+   * Carrega os dados (core + bee) de um peer sem enviar follow-request.
+   * Usado internamente para sincronizar dados de seguidores e peers conectados.
+   */
+  async _loadFollowerData(pubKeyHex) {
     const existing = this.followed.get(pubKeyHex)
     if (existing) return existing
 
@@ -379,12 +407,6 @@ class P2PNode extends EventEmitter {
 
     const entry = { core, bee, discovery }
     this.followed.set(pubKeyHex, entry)
-    
-    // Enviar follow-request para todos os peers conectados neste core
-    // Isso indica explicitamente que queremos ser registrados como seguidor
-    this._sendFollowRequestsToPeers(pubKeyHex, entry).catch((err) => {
-      console.log('[_openFollowed] Falha ao enviar follow-requests:', err.message)
-    })
     
     return entry
   }
