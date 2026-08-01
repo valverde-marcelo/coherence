@@ -108,6 +108,13 @@ class P2PNode extends EventEmitter {
     /** @type {Map<string, { core: any, bee: any, discovery: any }>} */
     this.followed = new Map()
     
+    /**
+     * Armazena dados de peers que seguem você (seguidores).
+     * Usado apenas para exibir perfil/posts de seguidores, NÃO para o feed.
+     * Feed inclui APENAS peers em this.followed (que você segue).
+     */
+    this.followerDataCache = new Map()
+    
     // Mapa para correlacionar socketKey (Hyperswarm) → identityKey (chave real do usuário)
     this.peerIdentityMap = new Map()
     
@@ -335,8 +342,8 @@ class P2PNode extends EventEmitter {
       
       // Carregar automaticamente os dados do novo seguidor (perfil, posts)
       // Isso permite que a UI mostre informações do seguidor sem necessidade de follow
-      // Usa _loadFollowerData (não _openFollowed) para evitar enviar follow-request de volta
-      this._loadFollowerData(pubKeyHex).catch((err) => {
+      // Usa _loadFollowerData com isFollower: true (não _openFollowed) para evitar follow-request de volta
+      this._loadFollowerData(pubKeyHex, true).catch((err) => {
         console.log('[_recordFollower] ⚠️ Erro ao carregar dados do seguidor:', err.message)
       })
     } catch (err) {
@@ -389,10 +396,14 @@ class P2PNode extends EventEmitter {
 
   /**
    * Carrega os dados (core + bee) de um peer sem enviar follow-request.
+   * @param {string} pubKeyHex - Chave pública do peer
+   * @param {boolean} isFollower - Se true, armazena em followerDataCache (seguidor que não segue você).
+   *                               Se false, armazena em followed (peer que você segue).
    * Usado internamente para sincronizar dados de seguidores e peers conectados.
    */
-  async _loadFollowerData(pubKeyHex) {
-    const existing = this.followed.get(pubKeyHex)
+  async _loadFollowerData(pubKeyHex, isFollower = false) {
+    const targetMap = isFollower ? this.followerDataCache : this.followed
+    const existing = targetMap.get(pubKeyHex)
     if (existing) return existing
 
     const core = this.store.get({ key: Buffer.from(pubKeyHex, 'hex') })
@@ -406,7 +417,7 @@ class P2PNode extends EventEmitter {
     core.on('peer-remove', () => this.emit('peers-changed'))
 
     const entry = { core, bee, discovery }
-    this.followed.set(pubKeyHex, entry)
+    targetMap.set(pubKeyHex, entry)
     
     return entry
   }
@@ -517,7 +528,7 @@ class P2PNode extends EventEmitter {
     return value
   }
 
-  /** Lê o perfil de qualquer chave (própria ou seguida), com timeout se ainda não sincronizou. */
+  /** Lê o perfil de qualquer chave (própria, seguida ou seguidor), com timeout se ainda não sincronizou. */
   async getProfile(pubKeyHex) {
     if (pubKeyHex === this.myPublicKeyHex) {
       const myProf = await this.getMyProfile()
@@ -526,11 +537,18 @@ class P2PNode extends EventEmitter {
     }
     
     console.log('[getProfile] Buscando perfil de:', pubKeyHex.slice(0, 16))
-    const entry = this.followed.get(pubKeyHex)
+    // Procurar primeiro em peers que você segue
+    let entry = this.followed.get(pubKeyHex)
+    
+    // Se não encontrar, procurar em seguidores (followerDataCache)
+    if (!entry) {
+      entry = this.followerDataCache.get(pubKeyHex)
+    }
+    
     console.log('[getProfile] Entry encontrada?', !!entry)
     
     if (!entry) {
-      console.log('[getProfile] ⚠️ Entry não encontrada em this.followed')
+      console.log('[getProfile] ⚠️ Entry não encontrada em this.followed nem em this.followerDataCache')
       return null
     }
     
@@ -569,12 +587,19 @@ class P2PNode extends EventEmitter {
     return followers
   }
 
-  /** Retorna todos os posts de um usuário específico. */
+  /** Retorna todos os posts de um usuário específico (seguido ou seguidor). */
   async getPostsOf(pubKeyHex) {
     if (pubKeyHex === this.myPublicKeyHex) {
       return this._postsFrom(pubKeyHex, this.myBee)
     }
-    const entry = this.followed.get(pubKeyHex)
+    // Procurar primeiro em peers que você segue
+    let entry = this.followed.get(pubKeyHex)
+    
+    // Se não encontrar, procurar em seguidores
+    if (!entry) {
+      entry = this.followerDataCache.get(pubKeyHex)
+    }
+    
     if (!entry) return []
     return this._postsFrom(pubKeyHex, entry.bee)
   }
