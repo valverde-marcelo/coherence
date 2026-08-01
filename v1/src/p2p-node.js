@@ -111,9 +111,6 @@ class P2PNode extends EventEmitter {
     // Mapa para correlacionar socketKey (Hyperswarm) → identityKey (chave real do usuário)
     this.peerIdentityMap = new Map()
     
-    // Rastreiar conexões para registrar apenas seguidores genuínos (persistentes)
-    this.peerConnections = new Map() // socketKey → { identityKey, connectedAt }
-    
     this.ready = false
   }
 
@@ -136,88 +133,122 @@ class P2PNode extends EventEmitter {
     
     this.swarm.on('connection', (socket) => {
       const socketKey = socket.remotePublicKey?.toString('hex')
-      console.log('[swarm:connection] Socket conectado de peer:', socketKey?.slice(0, 16))
       const connectedAt = Date.now()
       
-      // FASE 1: Hand-shake de identidade
-      // Enviar nossa identidade como PRIMEIRA mensagem
-      const handshake = JSON.stringify({
-        type: 'handshake',
-        identityKey: this.myPublicKeyHex
-      })
-      socket.write(handshake + '\n')
+      // Hand-shake para trocar identidades
+      // { type: 'handshake', identityKey: 'ABC...' }
+      //
+      // APÓS o handshake, peer pode enviar:
+      // { type: 'follow-request', identityKey: 'ABC...' }  ← pedindo para ser registrado como seguidor
+      //
+      // Apenas registra como seguidor se receber follow-request explícito
       
-      // FASE 2: Aguardar identidade do peer (máx 500ms)
       let handshakeDone = false
       let peerIdentityKey = null
       
-      const handleFirstData = (chunk) => {
-        if (handshakeDone) return
+      const handshakeMessage = JSON.stringify({
+        type: 'handshake',
+        identityKey: this.myPublicKeyHex
+      })
+      
+      const processHandshake = (chunk) => {
+        if (handshakeDone) return false
         
+        const str = chunk.toString('utf8')
+        const newlineIdx = str.indexOf('\n')
+        if (newlineIdx === -1) return false
+        
+        const firstLine = str.substring(0, newlineIdx).trim()
         try {
-          const str = chunk.toString('utf8').trim()
-          const lines = str.split('\n')
-          const firstLine = lines[0].trim()
-          
           if (firstLine.startsWith('{')) {
             const msg = JSON.parse(firstLine)
-            if (msg.type === 'handshake' && msg.identityKey) {
+            if (msg.type === 'handshake' && msg.identityKey && msg.identityKey.length === 64) {
               handshakeDone = true
               peerIdentityKey = msg.identityKey
               this.peerIdentityMap.set(socketKey, peerIdentityKey)
               
-              // Rastreiar esta conexão para verificar persistência
-              this.peerConnections.set(socketKey, { identityKey: peerIdentityKey, connectedAt })
+              console.log('[swarm:connection:handshake] ✓ Peer:', peerIdentityKey.slice(0, 16))
               
-              console.log('[swarm:connection:handshake] ✓ Identidade do peer:', peerIdentityKey?.slice(0, 16))
-              
-              socket.removeListener('data', handleFirstData)
-              this.store.replicate(socket)
-              
-              // IMPORTANTE: Registrar como seguidor APENAS se conexão persistir por 2+ segundos
-              // Isso evita registrar acessos transitórios para descoberta de dados
-              if (peerIdentityKey && peerIdentityKey !== this.myPublicKeyHex) {
-                const persistenceCheckId = setTimeout(() => {
-                  const conn = this.peerConnections.get(socketKey)
-                  // Se socket ainda está ativo após 2 segundos, registrar como seguidor genuíno
-                  if (conn && !socket.destroyed) {
-                    this._recordFollower(peerIdentityKey).catch((err) => {
-                      console.error('[_recordFollower] Erro:', err.message)
-                    })
-                  }
-                }, 2000)
-                
-                // Limpar timer se socket fechar antes do timeout
-                socket.once('close', () => {
-                  clearTimeout(persistenceCheckId)
-                  this.peerConnections.delete(socketKey)
-                })
-              }
-              
-              this.emit('peers-changed')
-              return
+              return true
             }
           }
         } catch (e) {
-          // Erro ao parsear handshake - continuar com fallback
+          console.log('[swarm:connection:handshake] ⚠️ Parse error:', e.message)
+        }
+        return false
+      }
+      
+      const processFollowRequest = (chunk) => {
+        const str = chunk.toString('utf8')
+        const newlineIdx = str.indexOf('\n')
+        if (newlineIdx === -1) return false
+        
+        const firstLine = str.substring(0, newlineIdx).trim()
+        try {
+          if (firstLine.startsWith('{')) {
+            const msg = JSON.parse(firstLine)
+            if (msg.type === 'follow-request' && msg.identityKey && msg.identityKey.length === 64) {
+              console.log('[swarm:connection:follow-request] ✓ Recebi follow-request de:', msg.identityKey.slice(0, 16))
+              this._recordFollower(msg.identityKey).catch((err) => {
+                console.error('[_recordFollower] Erro:', err.message)
+              })
+              return true
+            }
+          }
+        } catch (e) {
+          // Ignorar erros de parse
+        }
+        return false
+      }
+      
+      const handleData = (chunk) => {
+        if (!handshakeDone) {
+          if (processHandshake(chunk)) {
+            socket.removeListener('data', handleData)
+            
+            // Iniciar replicação após handshake bem-sucedido
+            this.store.replicate(socket)
+            
+            // Aguardar follow-request por até 3 segundos
+            const followRequestTimeout = setTimeout(() => {
+              socket.removeListener('data', handleFollowRequest)
+              console.log('[swarm:connection:follow-request] ⚠️ Timeout, nenhum follow-request recebido de:', peerIdentityKey.slice(0, 16))
+            }, 3000)
+            
+            // Continuar ouvindo por follow-request
+            const handleFollowRequest = (chunk) => {
+              if (processFollowRequest(chunk)) {
+                clearTimeout(followRequestTimeout)
+                socket.removeListener('data', handleFollowRequest)
+              }
+            }
+            socket.on('data', handleFollowRequest)
+            
+            this.emit('peers-changed')
+          }
         }
       }
       
-      socket.on('data', handleFirstData)
+      // Registrar listener ANTES de enviar (evita race condition)
+      socket.on('data', handleData)
       
-      // FASE 3: Timeout - se não receber handshake em 500ms
-      const timeoutId = setTimeout(() => {
+      // Enviar handshake
+      socket.write(handshakeMessage + '\n')
+      
+      // Timeout se não receber handshake
+      const handshakeTimeout = setTimeout(() => {
         if (!handshakeDone) {
-          console.log('[swarm:connection:handshake] ⚠️ Timeout no handshake (sem identificação)')
-          socket.removeListener('data', handleFirstData)
+          console.log('[swarm:connection:handshake] ⚠️ Timeout, continuando sem handshake')
+          socket.removeListener('data', handleData)
           handshakeDone = true
-          
           this.store.replicate(socket)
-          // NÃO registrar como seguidor (conexão anônima/sem handshake)
-          
           this.emit('peers-changed')
         }
-      }, 500)
+      }, 1000)
+      
+      socket.on('close', () => {
+        clearTimeout(handshakeTimeout)
+      })
     })
     this.swarm.on('error', (err) => this.emit('error', err))
 
@@ -277,6 +308,11 @@ class P2PNode extends EventEmitter {
     const done = core.findingPeers()
     discovery.flushed().then(done, done)
     return discovery
+  }
+  
+  // Armazenar qual core publicamos (para identificar em swarm.on('connection'))
+  get myDiscoveryKey() {
+    return this.myCore?.discoveryKey?.toString('hex')
   }
 
   /**
@@ -343,7 +379,54 @@ class P2PNode extends EventEmitter {
 
     const entry = { core, bee, discovery }
     this.followed.set(pubKeyHex, entry)
+    
+    // Enviar follow-request para todos os peers conectados neste core
+    // Isso indica explicitamente que queremos ser registrados como seguidor
+    this._sendFollowRequestsToPeers(pubKeyHex, entry).catch((err) => {
+      console.log('[_openFollowed] Falha ao enviar follow-requests:', err.message)
+    })
+    
     return entry
+  }
+  
+  /** Enviar follow-request para peers conectados (recursivo, tenta novamente se não encontrar peers) */
+  async _sendFollowRequestsToPeers(pubKeyHex, entry, attempts = 0) {
+    if (attempts > 5) {
+      console.log('[_sendFollowRequestsToPeers] Limite de tentativas atingido para:', pubKeyHex.slice(0, 16))
+      return
+    }
+    
+    const { core } = entry
+    const peers = core.peers || []
+    
+    if (peers.length === 0) {
+      // Nenhum peer conectado ainda, aguardar um pouco e tentar novamente
+      console.log('[_sendFollowRequestsToPeers] Aguardando peers para:', pubKeyHex.slice(0, 16), '(tentativa', attempts + 1, ')')
+      await new Promise(resolve => setTimeout(resolve, 500))
+      return this._sendFollowRequestsToPeers(pubKeyHex, entry, attempts + 1)
+    }
+    
+    const followRequest = JSON.stringify({
+      type: 'follow-request',
+      identityKey: this.myPublicKeyHex
+    })
+    
+    // Enviar para cada peer conectado
+    let sent = 0
+    for (const peer of peers) {
+      if (peer.stream && !peer.stream.destroyed) {
+        try {
+          peer.stream.write(followRequest + '\n')
+          sent++
+        } catch (e) {
+          // Ignorar
+        }
+      }
+    }
+    
+    if (sent > 0) {
+      console.log('[_sendFollowRequestsToPeers] ✓ Enviado follow-request para', sent, 'peer(s) em:', pubKeyHex.slice(0, 16))
+    }
   }
 
   async follow(pubKeyHex) {
