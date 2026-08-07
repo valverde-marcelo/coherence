@@ -19,7 +19,7 @@ Uma rede social distribuída baseada em tecnologia P2P (peer-to-peer) utilizando
 - ✅ **Sistema de Seguir/Deixar de Seguir**: Seguidores são detectados via conexões P2P
 - ✅ **Descoberta de Peers**: Automaticamente descobre e conecta com usuários seguidos
 - ✅ **Interface Intuitiva**: 3 colunas (Perfil, Feed, Seguidores) em Electron
-- ✅ **Persistência**: Dados salvos localmente em `~/.p2p-social/`
+- ✅ **Persistência**: Dados salvos localmente em `~/Documents/coherence-data/`
 
 ## 📁 Estrutura do Projeto
 
@@ -80,8 +80,8 @@ npm start
 
 ### Primeira Execução
 1. Abra a aplicação com `npm start`
-2. Sua chave pública será gerada automaticamente
-3. Edite seu perfil (nome, bio, avatar, links)
+2. Na primeira execução, escolha o idioma e importe uma identidade ou crie uma nova conta
+3. Edite seu perfil (bio, avatar, links)
 4. Comece a postar!
 
 ### Seguir Usuários
@@ -101,7 +101,7 @@ Os dados são replicados através:
 1. **Replicação Automática**: Quando dois peers conectam, dados são sincronizados
 2. **Polling Inteligente**: Atualização de perfis e posts a cada 10 segundos
 3. **Detecção de Peers**: Novos seguidores são detectados em tempo real
-4. **Persistência Local**: Tudo é salvo em `~/.p2p-social/`
+4. **Persistência Local**: Tudo é salvo em `~/Documents/coherence-data/`
 
 ## 🧪 Testes
 

@@ -8,6 +8,37 @@
 </head>
 <body>
 
+  <section id="setup-screen" class="setup-screen" hidden>
+    <div class="setup-panel">
+      <div class="setup-mark">COHERENCE</div>
+      <h1 data-i18n="welcomeTitle">Bem-vindo ao Coherence</h1>
+      <p class="setup-lead" data-i18n="welcomeLead">Uma rede social distribuída, sob seu controle.</p>
+
+      <label class="field setup-locale-field">
+        <span data-i18n="language">idioma</span>
+        <select id="setup-locale" class="setup-select">
+          <option value="pt-BR">Português (pt-BR)</option>
+          <option value="en-US">English (en-US)</option>
+        </select>
+      </label>
+
+      <div class="setup-actions">
+        <button id="setup-import" type="button" class="btn btn--ghost" data-i18n="importIdentity">importar chaves</button>
+        <button id="setup-create" type="button" class="btn btn--accent" data-i18n="createAccount">criar nova conta</button>
+      </div>
+
+      <form id="setup-create-form" class="setup-create-form" hidden>
+        <label class="field">
+          <span data-i18n="username">nome de usuário</span>
+          <input id="setup-username" type="text" maxlength="30" autocomplete="off" required />
+        </label>
+        <button type="submit" class="btn btn--accent" data-i18n="confirm">confirmar</button>
+      </form>
+      <p id="setup-error" class="form-error" hidden></p>
+      <p id="setup-status" class="setup-status" hidden></p>
+    </div>
+  </section>
+
   <div class="app">
 
     <!-- LEFT SIDEBAR: Usuário, Perfil, Links -->
@@ -170,6 +201,8 @@
     </li>
   </template>
 
+  <script src="i18n.js"></script>
+  <script src="setup.js"></script>
   <script src="renderer.js"></script>
 </body>
 </html>

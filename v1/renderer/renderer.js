@@ -854,6 +854,8 @@ window.p2p.on('following-status-update', (list) => {
 // =====================================================================
 
 ;(async () => {
+  await window.coherenceSetupReady
+  if (window.__coherenceSetupActive) return
   await loadIdentity()
   await loadFollowing()
   await loadFeed()

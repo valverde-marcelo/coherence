@@ -18,6 +18,15 @@ contextBridge.exposeInMainWorld('p2p', {
   getFollowers: () => ipcRenderer.invoke('p2p:get-followers'),
   getPostsOf: (key) => ipcRenderer.invoke('p2p:get-posts-of', key),
 
+  setup: {
+    getSettings: () => ipcRenderer.invoke('setup:get-settings'),
+    setSettings: (settings) => ipcRenderer.invoke('setup:set-settings', settings),
+    checkIdentity: () => ipcRenderer.invoke('setup:check-identity'),
+    importIdentity: () => ipcRenderer.invoke('setup:import-identity'),
+    createIdentity: (username) => ipcRenderer.invoke('setup:create-identity', username),
+    startApp: () => ipcRenderer.invoke('setup:start-app')
+  },
+
   /** Assina um evento vindo do processo main. Retorna uma função para cancelar a assinatura. */
   on(eventName, callback) {
     if (!EVENTS.includes(eventName)) throw new Error('evento desconhecido: ' + eventName)
