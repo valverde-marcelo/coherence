@@ -65,8 +65,21 @@ async function waitUntil(check, { timeout = 8000, interval = 100 } = {}) {
   })
   console.log('Post publicado após o follow chegou em tempo real?', gotThird)
 
+  // Verificar que Alice registrou Bob como seguidor
+  const aliceFollowers = await waitUntil(async () => {
+    const followers = await alice.getFollowers()
+    return followers.length === 1
+  }, { timeout: 5000 })
+  
+  console.log('Alice registrou Bob como seguidor?', aliceFollowers)
+  if (aliceFollowers) {
+    const aliceFollowersList = await alice.getFollowers()
+    console.log('Seguidores da Alice:', aliceFollowersList.map(f => f.publicKeyHex.slice(0, 12)))
+  }
+
   const ok = synced && gotThird && bobFeed.length === 2 &&
-    aliceProfileFromBob && aliceProfileFromBob.nome === 'Alice'
+    aliceProfileFromBob && aliceProfileFromBob.nome === 'Alice' &&
+    aliceFollowers
 
   await alice.stop()
   await bob.stop()
