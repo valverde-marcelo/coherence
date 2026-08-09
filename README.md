@@ -114,6 +114,10 @@ npm test
 # - test-integration-follow-sync.js  → Sincronização de seguimento
 # - test-integration-seeding.js      → Seeding de dados
 # - test-persistence.js              → Persistência de dados
+# - test-followers-records.js        → Persistência de seguidores
+# - test-restart-after-stop-race.js  → Restart durante leitura concorrente
+# - test-identity-recovery.js        → Recuperação usando apenas identity.json
+# - test-recovery-timeout.js         → Timeout e fallback para core novo
 ```
 
 ## 🔐 Privacidade & Segurança
@@ -124,6 +128,13 @@ npm test
 - **Privacidade por Design**: Peers só podem ler dados que você compartilha
 
 **Nota**: Um peer pode ler seu perfil e posts se souber sua chave pública. Isso é por design - você escolhe com quem compartilhar sua chave.
+
+### Recuperar uma identidade
+
+Exporte e guarde o arquivo `identity.json`. Em outra instalação, importe apenas esse
+arquivo. O aplicativo aguardará um seeder que tenha o seu Hypercore para recuperar perfil,
+posts e seguidores. Se nenhum seeder aparecer dentro do timeout, você poderá começar do
+zero mantendo a mesma identidade.
 
 ## 💾 Reset Completo
 

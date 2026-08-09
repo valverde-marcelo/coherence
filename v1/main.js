@@ -9,6 +9,8 @@ let mainWindow = null
 let node = null
 let dataDir = null
 let statusUpdateInterval = null
+let nodeLifecycle = Promise.resolve()
+let quitting = false
 
 function settingsFile() {
   return path.join(dataDir, 'settings.json')
@@ -42,28 +44,61 @@ function validateIdentity(identity) {
   }
 }
 
-async function startNode() {
-  if (node) return node.myPublicKeyHex
-  node = new P2PNode({ dataDir })
-  console.log('Iniciando nó P2P com storage em', node.dataDir)
-  node.on('feed-updated', forward('p2p:event:feed-updated'))
-  node.on('profile-updated', forward('p2p:event:profile-updated'))
-  node.on('following-changed', forward('p2p:event:following-changed'))
-  node.on('peers-changed', forward('p2p:event:peers-changed'))
-  node.on('error', (err) => console.error('[P2PNode]', err))
-  await node.start()
-  console.log('Nó P2P pronto. Chave pública:', node.myPublicKeyHex)
-  statusUpdateInterval = setInterval(async () => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      try {
-        const followingList = await node.getFollowingList()
-        mainWindow.webContents.send('p2p:event:following-status-update', followingList)
-      } catch (err) {
-        console.error('[Status Update Polling]', err)
-      }
+async function startNode({ recovery = false } = {}) {
+  const operation = nodeLifecycle.then(async () => {
+    if (node) return node.myPublicKeyHex
+
+    const startedNode = new P2PNode({ dataDir })
+    node = startedNode
+    console.log('Iniciando nó P2P com storage em', startedNode.dataDir)
+    startedNode.on('feed-updated', forward('p2p:event:feed-updated'))
+    startedNode.on('profile-updated', forward('p2p:event:profile-updated'))
+    startedNode.on('following-changed', forward('p2p:event:following-changed'))
+    startedNode.on('peers-changed', forward('p2p:event:peers-changed'))
+    startedNode.on('recovery-updated', forward('p2p:event:recovery-updated'))
+    startedNode.on('error', (err) => console.error('[P2PNode]', err))
+    try {
+      await startedNode.start({ recovery })
+    } catch (error) {
+      if (node === startedNode) node = null
+      await startedNode.stop().catch(() => {})
+      throw error
     }
-  }, 7000)
-  return node.myPublicKeyHex
+    console.log('Nó P2P pronto. Chave pública:', startedNode.myPublicKeyHex)
+    statusUpdateInterval = setInterval(async () => {
+      if (node !== startedNode || startedNode.lifecycleState !== 'ready') return
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        try {
+          const followingList = await startedNode.getFollowingList()
+          if (node === startedNode && startedNode.lifecycleState === 'ready') {
+            mainWindow.webContents.send('p2p:event:following-status-update', followingList)
+          }
+        } catch (err) {
+          if (node === startedNode && startedNode.lifecycleState === 'ready') {
+            console.error('[Status Update Polling]', err)
+          }
+        }
+      }
+    }, 7000)
+    return startedNode.myPublicKeyHex
+  })
+  nodeLifecycle = operation.catch(() => {})
+  return operation
+}
+
+function stopNode() {
+  const operation = nodeLifecycle.then(async () => {
+    if (statusUpdateInterval) {
+      clearInterval(statusUpdateInterval)
+      statusUpdateInterval = null
+    }
+
+    const toClose = node
+    node = null
+    if (toClose) await toClose.stop()
+  })
+  nodeLifecycle = operation.catch(() => {})
+  return operation
 }
 
 async function createWindow() {
@@ -121,7 +156,7 @@ function registerIpcHandlers() {
     validateIdentity(identity)
     fs.mkdirSync(dataDir, { recursive: true })
     fs.copyFileSync(sourcePath, path.join(dataDir, 'identity.json'))
-    return { canceled: false, publicKeyHex: await startNode() }
+    return { canceled: false, publicKeyHex: await startNode({ recovery: true }), state: node.lifecycleState }
   })
   ipcMain.handle('setup:create-identity', async (_evt, username) => {
     if (!/^[\p{L}\p{N} _.-]{1,30}$/u.test(String(username || '').trim())) {
@@ -138,7 +173,19 @@ function registerIpcHandlers() {
     await node.updateMyProfile({ nome: String(username).trim() })
     return { publicKeyHex: node.myPublicKeyHex }
   })
-  ipcMain.handle('setup:start-app', () => startNode())
+  ipcMain.handle('setup:start-app', async () => {
+    const publicKeyHex = await startNode({
+      recovery: fs.existsSync(path.join(dataDir, 'identity.json')) &&
+        !fs.existsSync(path.join(dataDir, 'corestore'))
+    })
+    return { publicKeyHex, state: node.lifecycleState }
+  })
+  ipcMain.handle('setup:start-from-zero', async () => {
+    await stopNode()
+    fs.rmSync(path.join(dataDir, 'corestore'), { recursive: true, force: true })
+    const publicKeyHex = await startNode()
+    return { publicKeyHex, state: node.lifecycleState }
+  })
   ipcMain.handle('export-identity', async () => {
     const result = await dialog.showSaveDialog(mainWindow, {
       title: 'Exportar identidade',
@@ -151,12 +198,7 @@ function registerIpcHandlers() {
   })
   ipcMain.handle('reset-app', async () => {
     try {
-      if (statusUpdateInterval) clearInterval(statusUpdateInterval)
-      if (node) {
-        const toClose = node
-        node = null
-        await toClose.stop()
-      }
+      await stopNode()
       fs.rmSync(dataDir, { recursive: true, force: true })
       app.relaunch()
       app.exit(0)
@@ -182,7 +224,9 @@ async function main() {
 
   registerIpcHandlers()
   await app.whenReady()
-  if (fs.existsSync(path.join(dataDir, 'identity.json'))) await startNode()
+  if (fs.existsSync(path.join(dataDir, 'identity.json')) && fs.existsSync(path.join(dataDir, 'corestore'))) {
+    await startNode()
+  }
   await createWindow()
 
   app.on('activate', () => {
@@ -202,11 +246,10 @@ app.on('window-all-closed', () => {
 // Fecha o swarm e o Corestore com cuidado antes de sair, para não corromper
 // o storage local.
 app.on('before-quit', (event) => {
-  if (!node) return
+  if (quitting || (!node && !statusUpdateInterval)) return
   event.preventDefault()
-  const toClose = node
-  node = null
-  toClose.stop().finally(() => app.exit(0))
+  quitting = true
+  stopNode().finally(() => app.exit(0))
 })
 
 main().catch((err) => {

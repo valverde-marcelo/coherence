@@ -67,9 +67,16 @@ function loadOrCreateIdentity(identityFile) {
 
   return {
     keyPair,               // { publicKey, secretKey } — usar para abrir o core próprio no Corestore
+    coreKey: typeof pem.coreKey === 'string' ? pem.coreKey : null,
     publicKeyObject,       // KeyObject node:crypto, caso precise assinar algo fora do Hypercore
     privateKeyObject
   }
 }
 
-module.exports = { loadOrCreateIdentity, toHypercoreKeyPair }
+function saveCoreKey(identityFile, coreKey) {
+  const identity = JSON.parse(fs.readFileSync(identityFile, 'utf8'))
+  identity.coreKey = Buffer.from(coreKey).toString('hex')
+  fs.writeFileSync(identityFile, JSON.stringify(identity, null, 2))
+}
+
+module.exports = { loadOrCreateIdentity, saveCoreKey, toHypercoreKeyPair }

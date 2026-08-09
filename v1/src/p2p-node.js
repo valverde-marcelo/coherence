@@ -29,7 +29,7 @@ const Corestore = require('corestore')
 const Hyperbee = require('hyperbee')
 const Hyperswarm = require('hyperswarm')
 
-const { loadOrCreateIdentity } = require('./identity')
+const { loadOrCreateIdentity, saveCoreKey } = require('./identity')
 
 const POST_PREFIX = 'post!'
 const POST_SEQ_DIGITS = 12
@@ -93,10 +93,11 @@ class P2PNode extends EventEmitter {
    * @param {string} opts.dataDir - pasta onde ficam identity.json e o storage do Corestore
    * @param {number} [opts.readTimeoutMs] - timeout ao ler dados de peers seguidos
    */
-  constructor({ dataDir, readTimeoutMs = 4000, swarmOpts = {} }) {
+  constructor({ dataDir, readTimeoutMs = 4000, recoveryTimeoutMs = 30000, swarmOpts = {} }) {
     super()
     this.dataDir = dataDir
     this.readTimeoutMs = readTimeoutMs
+    this.recoveryTimeoutMs = recoveryTimeoutMs
     this.swarmOpts = swarmOpts
     this.identityFile = path.join(dataDir, 'identity.json')
     this.storageDir = path.join(dataDir, 'corestore')
@@ -119,16 +120,49 @@ class P2PNode extends EventEmitter {
     this.peerIdentityMap = new Map()
     
     this.ready = false
+    this.lifecycleState = 'new'
+    this.activeOperations = 0
+    this.operationsDrained = null
+    this.stopPromise = null
+    this.recoveryState = null
+    this.recoveryPromise = null
+    this.recoveryCancelled = false
+    this.recoveryDownload = null
+    this.followerWritePromise = Promise.resolve()
+    this.followerRecords = new Map()
+    this.followerRecordsLoaded = false
+  }
+
+  _runOperation(operation) {
+    if (this.lifecycleState !== 'ready') {
+      throw new Error(`Nó P2P indisponível (${this.lifecycleState}).`)
+    }
+
+    this.activeOperations++
+    const result = Promise.resolve().then(operation)
+    return result.finally(() => {
+      this.activeOperations--
+      if (this.activeOperations === 0 && this.operationsDrained) {
+        this.operationsDrained()
+        this.operationsDrained = null
+      }
+    })
   }
 
   // ------------------------------------------------------------------
   // Ciclo de vida
   // ------------------------------------------------------------------
 
-  async start() {
+  async start({ recovery = false } = {}) {
+    if (this.lifecycleState === 'ready') return
+    if (this.lifecycleState !== 'new') {
+      throw new Error(`Nó P2P não pode iniciar (${this.lifecycleState}).`)
+    }
+
+    this.lifecycleState = 'starting'
     fs.mkdirSync(this.dataDir, { recursive: true })
 
-    const { keyPair } = loadOrCreateIdentity(this.identityFile)
+    const { keyPair, coreKey } = loadOrCreateIdentity(this.identityFile)
 
     this.store = new Corestore(this.storageDir)
     this.swarm = new Hyperswarm(this.swarmOpts)
@@ -184,7 +218,7 @@ class P2PNode extends EventEmitter {
         }
         return false
       }
-      
+
       const processFollowRequest = (chunk) => {
         const str = chunk.toString('utf8')
         const newlineIdx = str.indexOf('\n')
@@ -196,9 +230,11 @@ class P2PNode extends EventEmitter {
             const msg = JSON.parse(firstLine)
             if (msg.type === 'follow-request' && msg.identityKey && msg.identityKey.length === 64) {
               console.log('[swarm:connection:follow-request] ✓ Recebi follow-request de:', msg.identityKey.slice(0, 16))
-              this._recordFollower(msg.identityKey).catch((err) => {
-                console.error('[_recordFollower] Erro:', err.message)
-              })
+              if (this.lifecycleState === 'ready') {
+                this._recordFollower(msg.identityKey).catch((err) => {
+                  console.error('[_recordFollower] Erro:', err.message)
+                })
+              }
               return true
             }
           }
@@ -259,8 +295,31 @@ class P2PNode extends EventEmitter {
     })
     this.swarm.on('error', (err) => this.emit('error', err))
 
+    if (recovery) {
+      this.recoveryCancelled = false
+      this.myCore = this.store.get({
+        key: coreKey ? Buffer.from(coreKey, 'hex') : keyPair.publicKey,
+        writable: false
+      })
+      await this.myCore.ready()
+      this.myBee = new Hyperbee(this.myCore, { keyEncoding: 'utf-8', valueEncoding: 'json' })
+      await this.myBee.ready()
+      await this._joinTopic(this.myCore)
+      this.lifecycleState = 'recovery'
+      this.recoveryState = 'waiting'
+      this.recoveryPromise = new Promise((resolve, reject) => {
+        setImmediate(() => this._recoverFromNetwork(keyPair).then(resolve, reject))
+      })
+      this.recoveryPromise.catch((err) => this.emit('error', err))
+      this.emit('recovery-updated', { state: this.recoveryState, timeoutMs: this.recoveryTimeoutMs })
+      return
+    }
+
     this.myCore = this.store.get({ keyPair })
     await this.myCore.ready()
+    if (!coreKey || coreKey !== this.myCore.key.toString('hex')) {
+      saveCoreKey(this.identityFile, this.myCore.key)
+    }
     this.myBee = new Hyperbee(this.myCore, { keyEncoding: 'utf-8', valueEncoding: 'json' })
     await this.myBee.ready()
 
@@ -294,15 +353,89 @@ class P2PNode extends EventEmitter {
     ))
 
     this.ready = true
+    this.lifecycleState = 'ready'
     this.emit('ready', { publicKeyHex: this.myPublicKeyHex })
   }
 
+  async _recoverFromNetwork(keyPair) {
+    const deadline = Date.now() + this.recoveryTimeoutMs
+    while (Date.now() < deadline && this.lifecycleState === 'recovery' && !this.recoveryCancelled) {
+      try {
+        await withTimeout(this.myCore.update({ wait: true }), 3000, null)
+        if (this.myCore.length === 0) {
+          await new Promise((resolve) => setTimeout(resolve, 500))
+          continue
+        }
+
+        const download = this.myCore.download({ start: 0, end: this.myCore.length })
+        this.recoveryDownload = download
+        const downloaded = await withTimeout(download.done().then(() => true), 5000, false)
+        if (this.recoveryDownload === download) this.recoveryDownload = null
+        if (this.recoveryCancelled) return
+        if (!downloaded) {
+          await new Promise((resolve) => setTimeout(resolve, 500))
+          continue
+        }
+
+        const profile = await withTimeout(this.myBee.get('profile'), 3000, null)
+        if (profile) {
+          const followList = (profile && profile.value.followList) || []
+          await this.swarm.leave(this.myCore.discoveryKey).catch(() => {})
+          await this.myBee.close().catch(() => {})
+          await this.myCore.close().catch(() => {})
+          this.myCore = this.store.get({ key: this.myCore.key, keyPair })
+          await this.myCore.ready()
+          this.myBee = new Hyperbee(this.myCore, { keyEncoding: 'utf-8', valueEncoding: 'json' })
+          await this.myBee.ready()
+          await this._joinTopic(this.myCore)
+          await Promise.all(followList.map((hex) =>
+            this._openFollowed(hex).catch((err) => this.emit('error', err))
+          ))
+
+          this.recoveryState = 'recovered'
+          this.lifecycleState = 'ready'
+          this.ready = true
+          this.emit('recovery-updated', { state: this.recoveryState, publicKeyHex: this.myPublicKeyHex })
+          this.emit('ready', { publicKeyHex: this.myPublicKeyHex })
+          return
+        }
+      } catch (err) {
+        if (err.code !== 'SESSION_CLOSED') this.emit('error', err)
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 500))
+    }
+
+    if (this.lifecycleState === 'recovery' && !this.recoveryCancelled) {
+      this.recoveryState = 'expired'
+      this.lifecycleState = 'recovery-expired'
+      this.emit('recovery-updated', { state: this.recoveryState, timeoutMs: this.recoveryTimeoutMs })
+    }
+  }
+
   async stop() {
+    if (this.stopPromise) return this.stopPromise
+
+    this.stopPromise = (async () => {
+      this.ready = false
+      this.recoveryCancelled = true
+      if (this.recoveryDownload) this.recoveryDownload.destroy()
+      this.lifecycleState = 'stopping'
+
+      if (this.recoveryPromise) await this.recoveryPromise.catch(() => {})
+      if (this.activeOperations > 0) {
+        await new Promise((resolve) => { this.operationsDrained = resolve })
+      }
+
     for (const { core } of this.followed.values()) {
       await core.close().catch(() => {})
     }
     if (this.swarm) await this.swarm.destroy().catch(() => {})
     if (this.store) await this.store.close().catch(() => {})
+      this.lifecycleState = 'stopped'
+    })()
+
+    return this.stopPromise
   }
 
   /** Chave pública compartilhável (hex) — é isso que um amigo cola para te seguir. */
@@ -328,16 +461,30 @@ class P2PNode extends EventEmitter {
    * Também carrega automaticamente os dados (perfil, posts) do seguidor para exibir na UI.
    */
   async _recordFollower(pubKeyHex) {
-    try {
-      const key = followerKey(pubKeyHex)
+    const operation = this.followerWritePromise.then(async () => {
       const now = Date.now()
-      const existing = await this.myBee.get(key)
-      
-      const record = existing
-        ? { ...existing.value, lastSeen: now, isActive: true }
-        : { connectedAt: now, lastSeen: now, isActive: true }
-      
-      await this.myBee.put(key, record)
+      if (!this.followerRecordsLoaded) {
+        const followers = await this._loadFollowersFromRecords()
+        for (const follower of followers) {
+          this.followerRecords.set(follower.publicKeyHex, {
+            connectedAt: follower.connectedAt,
+            lastSeen: follower.lastSeen,
+            isActive: true
+          })
+        }
+        this.followerRecordsLoaded = true
+      }
+
+      const previous = this.followerRecords.get(pubKeyHex)
+      this.followerRecords.set(pubKeyHex, previous
+        ? { ...previous, lastSeen: now, isActive: true }
+        : { connectedAt: now, lastSeen: now, isActive: true })
+
+      const batch = this.myBee.batch()
+      for (const [followerKeyHex, record] of this.followerRecords) {
+        await batch.put(followerKey(followerKeyHex), record)
+      }
+      await batch.flush()
       console.log('[_recordFollower] ✓ Registrado:', pubKeyHex.slice(0, 16))
       
       // Carregar automaticamente os dados do novo seguidor (perfil, posts)
@@ -346,6 +493,10 @@ class P2PNode extends EventEmitter {
       this._loadFollowerData(pubKeyHex, true).catch((err) => {
         console.log('[_recordFollower] ⚠️ Erro ao carregar dados do seguidor:', err.message)
       })
+    })
+    this.followerWritePromise = operation.catch(() => {})
+    try {
+      await operation
     } catch (err) {
       console.error('[_recordFollower] Erro ao registrar:', err.message)
     }
@@ -439,12 +590,11 @@ class P2PNode extends EventEmitter {
       return this._sendFollowRequestsToPeers(pubKeyHex, entry, attempts + 1)
     }
     
+    // Enviar para cada peer conectado
     const followRequest = JSON.stringify({
       type: 'follow-request',
       identityKey: this.myPublicKeyHex
     })
-    
-    // Enviar para cada peer conectado
     let sent = 0
     for (const peer of peers) {
       if (peer.stream && !peer.stream.destroyed) {
@@ -463,44 +613,48 @@ class P2PNode extends EventEmitter {
   }
 
   async follow(pubKeyHex) {
-    pubKeyHex = String(pubKeyHex || '').trim().toLowerCase()
-    if (!HEX64.test(pubKeyHex)) throw new Error('Chave pública inválida (esperado hex de 64 caracteres).')
-    if (pubKeyHex === this.myPublicKeyHex) throw new Error('Você não pode seguir a si mesmo.')
+    return this._runOperation(async () => {
+      pubKeyHex = String(pubKeyHex || '').trim().toLowerCase()
+      if (!HEX64.test(pubKeyHex)) throw new Error('Chave pública inválida (esperado hex de 64 caracteres).')
+      if (pubKeyHex === this.myPublicKeyHex) throw new Error('Você não pode seguir a si mesmo.')
 
-    await this._openFollowed(pubKeyHex)
+      await this._openFollowed(pubKeyHex)
 
-    const current = await this.myBee.get('profile')
-    const value = (current && current.value) || { followList: [] }
-    if (!value.followList.includes(pubKeyHex)) {
-      value.followList = [...value.followList, pubKeyHex]
-      value.updatedAt = Date.now()
-      await this.myBee.put('profile', value)
-    }
+      const current = await this.myBee.get('profile')
+      const value = (current && current.value) || { followList: [] }
+      if (!value.followList.includes(pubKeyHex)) {
+        value.followList = [...value.followList, pubKeyHex]
+        value.updatedAt = Date.now()
+        await this.myBee.put('profile', value)
+      }
 
-    this.emit('following-changed')
-    return true
+      this.emit('following-changed')
+      return true
+    })
   }
 
   async unfollow(pubKeyHex) {
-    pubKeyHex = String(pubKeyHex || '').trim().toLowerCase()
+    return this._runOperation(async () => {
+      pubKeyHex = String(pubKeyHex || '').trim().toLowerCase()
 
-    const current = await this.myBee.get('profile')
-    if (current && current.value.followList.includes(pubKeyHex)) {
-      const value = current.value
-      value.followList = value.followList.filter((k) => k !== pubKeyHex)
-      value.updatedAt = Date.now()
-      await this.myBee.put('profile', value)
-    }
+      const current = await this.myBee.get('profile')
+      if (current && current.value.followList.includes(pubKeyHex)) {
+        const value = current.value
+        value.followList = value.followList.filter((k) => k !== pubKeyHex)
+        value.updatedAt = Date.now()
+        await this.myBee.put('profile', value)
+      }
 
-    const entry = this.followed.get(pubKeyHex)
-    if (entry) {
-      this.swarm.leave(entry.core.discoveryKey).catch(() => {})
-      await entry.core.close().catch(() => {})
-      this.followed.delete(pubKeyHex)
-    }
+      const entry = this.followed.get(pubKeyHex)
+      if (entry) {
+        this.swarm.leave(entry.core.discoveryKey).catch(() => {})
+        await entry.core.close().catch(() => {})
+        this.followed.delete(pubKeyHex)
+      }
 
-    this.emit('following-changed')
-    return true
+      this.emit('following-changed')
+      return true
+    })
   }
 
   // ------------------------------------------------------------------
@@ -508,73 +662,82 @@ class P2PNode extends EventEmitter {
   // ------------------------------------------------------------------
 
   async getMyProfile() {
-    const entry = await this.myBee.get('profile')
-    return { publicKeyHex: this.myPublicKeyHex, ...(entry ? entry.value : {}) }
+    return this._runOperation(async () => {
+      const entry = await this.myBee.get('profile')
+      return { publicKeyHex: this.myPublicKeyHex, ...(entry ? entry.value : {}) }
+    })
   }
 
   async updateMyProfile({ nome, bio, avatar, links } = {}) {
-    const current = await this.myBee.get('profile')
-    const value = (current && current.value) || { followList: [], links: [] }
-    if (nome !== undefined) value.nome = nome
-    if (bio !== undefined) value.bio = bio
-    if (avatar !== undefined) value.avatar = avatar
-    if (links !== undefined) {
-      // Limitar a máximo 3 links
-      value.links = Array.isArray(links) ? links.slice(0, 3) : []
-    }
-    value.updatedAt = Date.now()
-    await this.myBee.put('profile', value)
-    this.emit('profile-updated')
-    return value
+    return this._runOperation(async () => {
+      const current = await this.myBee.get('profile')
+      const value = (current && current.value) || { followList: [], links: [] }
+      if (nome !== undefined) value.nome = nome
+      if (bio !== undefined) value.bio = bio
+      if (avatar !== undefined) value.avatar = avatar
+      if (links !== undefined) {
+        // Limitar a máximo 3 links
+        value.links = Array.isArray(links) ? links.slice(0, 3) : []
+      }
+      value.updatedAt = Date.now()
+      await this.myBee.put('profile', value)
+      this.emit('profile-updated')
+      return value
+    })
   }
 
   /** Lê o perfil de qualquer chave (própria, seguida ou seguidor), com timeout se ainda não sincronizou. */
   async getProfile(pubKeyHex) {
-    if (pubKeyHex === this.myPublicKeyHex) {
-      const myProf = await this.getMyProfile()
-      console.log('[getProfile] Retornando MEU perfil:', myProf.nome)
-      return myProf
-    }
-    
-    console.log('[getProfile] Buscando perfil de:', pubKeyHex.slice(0, 16))
-    // Procurar primeiro em peers que você segue
-    let entry = this.followed.get(pubKeyHex)
-    
-    // Se não encontrar, procurar em seguidores (followerDataCache)
-    if (!entry) {
-      entry = this.followerDataCache.get(pubKeyHex)
-    }
-    
-    console.log('[getProfile] Entry encontrada?', !!entry)
-    
-    if (!entry) {
-      console.log('[getProfile] ⚠️ Entry não encontrada em this.followed nem em this.followerDataCache')
-      return null
-    }
-    
-    const result = await withTimeout(entry.bee.get('profile'), this.readTimeoutMs, null)
-    const finalProfile = result ? { publicKeyHex: pubKeyHex, ...result.value } : { publicKeyHex: pubKeyHex, sincronizando: true }
-    console.log('[getProfile] ✓ Perfil retornado:', { nome: finalProfile.nome, pubKeyHex: pubKeyHex.slice(0, 16) })
-    return finalProfile
+    return this._runOperation(async () => {
+      if (pubKeyHex === this.myPublicKeyHex) {
+        const entry = await this.myBee.get('profile')
+        const myProf = { publicKeyHex: this.myPublicKeyHex, ...(entry ? entry.value : {}) }
+        console.log('[getProfile] Retornando MEU perfil:', myProf.nome)
+        return myProf
+      }
+
+      console.log('[getProfile] Buscando perfil de:', pubKeyHex.slice(0, 16))
+      // Procurar primeiro em peers que você segue
+      let entry = this.followed.get(pubKeyHex)
+
+      // Se não encontrar, procurar em seguidores (followerDataCache)
+      if (!entry) {
+        entry = this.followerDataCache.get(pubKeyHex)
+      }
+
+      console.log('[getProfile] Entry encontrada?', !!entry)
+
+      if (!entry) {
+        console.log('[getProfile] ⚠️ Entry não encontrada em this.followed nem em this.followerDataCache')
+        return null
+      }
+
+      const result = await withTimeout(entry.bee.get('profile'), this.readTimeoutMs, null)
+      const finalProfile = result ? { publicKeyHex: pubKeyHex, ...result.value } : { publicKeyHex: pubKeyHex, sincronizando: true }
+      console.log('[getProfile] ✓ Perfil retornado:', { nome: finalProfile.nome, pubKeyHex: pubKeyHex.slice(0, 16) })
+      return finalProfile
+    })
   }
 
   async getFollowingList() {
-    const profile = await this.getMyProfile()
-    const list = profile.followList || []
-    const results = await Promise.all(list.map(async (hex) => {
-      const p = await this.getProfile(hex)
-      const entry = this.followed.get(hex)
-      return {
-        publicKeyHex: hex,
-        nome: p && p.nome,
-        bio: p && p.bio,
-        avatar: p && p.avatar,
-        links: p && p.links,
-        sincronizando: !p || !!p.sincronizando,
-        peersConectados: entry ? entry.core.peers.length : 0
-      }
-    }))
-    return results
+    return this._runOperation(async () => {
+      const profile = await this.myBee.get('profile')
+      const list = (profile && profile.value && profile.value.followList) || []
+      const results = await Promise.all(list.map(async (hex) => {
+        const p = await this.getProfile(hex)
+        const entry = this.followed.get(hex)
+        return {
+          publicKeyHex: hex,
+          nome: p && p.nome,
+          bio: p && p.bio,
+          avatar: p && p.avatar,
+          links: p && p.links,
+          sincronizando: !p || !!p.sincronizando,
+          peersConectados: entry ? entry.core.peers.length : 0
+        }
+      }))
+      return results
+    })
   }
 
   /**
@@ -582,26 +745,30 @@ class P2PNode extends EventEmitter {
    * Lê registros persistentes do Hyperbee (followers!<pubkey>).
    */
   async getFollowers() {
-    const followers = await this._loadFollowersFromRecords()
-    console.log(`[getFollowers] Retornando ${followers.length} seguidores (chaves: ${followers.map(f => f.publicKeyHex.slice(0, 12)).join(', ')})`)
-    return followers
+    return this._runOperation(async () => {
+      const followers = await this._loadFollowersFromRecords()
+      console.log(`[getFollowers] Retornando ${followers.length} seguidores (chaves: ${followers.map(f => f.publicKeyHex.slice(0, 12)).join(', ')})`)
+      return followers
+    })
   }
 
   /** Retorna todos os posts de um usuário específico (seguido ou seguidor). */
   async getPostsOf(pubKeyHex) {
-    if (pubKeyHex === this.myPublicKeyHex) {
-      return this._postsFrom(pubKeyHex, this.myBee)
-    }
-    // Procurar primeiro em peers que você segue
-    let entry = this.followed.get(pubKeyHex)
-    
-    // Se não encontrar, procurar em seguidores
-    if (!entry) {
-      entry = this.followerDataCache.get(pubKeyHex)
-    }
-    
-    if (!entry) return []
-    return this._postsFrom(pubKeyHex, entry.bee)
+    return this._runOperation(async () => {
+      if (pubKeyHex === this.myPublicKeyHex) {
+        return this._postsFrom(pubKeyHex, this.myBee)
+      }
+      // Procurar primeiro em peers que você segue
+      let entry = this.followed.get(pubKeyHex)
+
+      // Se não encontrar, procurar em seguidores
+      if (!entry) {
+        entry = this.followerDataCache.get(pubKeyHex)
+      }
+
+      if (!entry) return []
+      return this._postsFrom(pubKeyHex, entry.bee)
+    })
   }
 
   // ------------------------------------------------------------------
@@ -615,32 +782,34 @@ class P2PNode extends EventEmitter {
   }
 
   async publishPost({ tipo, texto, imagem }) {
-    if (tipo !== 'texto' && tipo !== 'imagem') {
-      throw new Error("tipo precisa ser 'texto' ou 'imagem'")
-    }
-    if (tipo === 'texto' && !texto) {
-      throw new Error('post de texto precisa de conteúdo')
-    }
-    if (tipo === 'imagem') {
-      if (!imagem || !imagem.dataBase64 || !imagem.mime) {
-        throw new Error('post de imagem precisa de { dataBase64, mime }')
+    return this._runOperation(async () => {
+      if (tipo !== 'texto' && tipo !== 'imagem') {
+        throw new Error("tipo precisa ser 'texto' ou 'imagem'")
       }
-      if (imagem.dataBase64.length > MAX_IMAGE_BASE64_BYTES) {
-        throw new Error(`imagem excede o limite de ${Math.round(MAX_IMAGE_BASE64_BYTES / 1024)}KB (v1)`)
+      if (tipo === 'texto' && !texto) {
+        throw new Error('post de texto precisa de conteúdo')
       }
-    }
+      if (tipo === 'imagem') {
+        if (!imagem || !imagem.dataBase64 || !imagem.mime) {
+          throw new Error('post de imagem precisa de { dataBase64, mime }')
+        }
+        if (imagem.dataBase64.length > MAX_IMAGE_BASE64_BYTES) {
+          throw new Error(`imagem excede o limite de ${Math.round(MAX_IMAGE_BASE64_BYTES / 1024)}KB (v1)`)
+        }
+      }
 
-    const seq = await this._nextSeq(this.myBee)
-    const post = {
-      tipo,
-      texto: texto || null,
-      imagem: imagem || null,
-      timestamp: Date.now(),
-      autor: this.myPublicKeyHex
-    }
-    await this.myBee.put(postKey(seq), post)
-    this.emit('feed-updated')
-    return { seq, ...post }
+      const seq = await this._nextSeq(this.myBee)
+      const post = {
+        tipo,
+        texto: texto || null,
+        imagem: imagem || null,
+        timestamp: Date.now(),
+        autor: this.myPublicKeyHex
+      }
+      await this.myBee.put(postKey(seq), post)
+      this.emit('feed-updated')
+      return { seq, ...post }
+    })
   }
 
   async _postsFrom(pubKeyHex, bee) {
@@ -651,13 +820,15 @@ class P2PNode extends EventEmitter {
 
   /** Monta o feed: posts próprios + de quem você segue, mais recentes primeiro. */
   async getFeed({ limit = 100 } = {}) {
-    const sources = [
-      this._postsFrom(this.myPublicKeyHex, this.myBee),
-      ...[...this.followed.entries()].map(([hex, entry]) => this._postsFrom(hex, entry.bee))
-    ]
-    const groups = await Promise.all(sources)
-    const posts = groups.flat().sort((a, b) => b.timestamp - a.timestamp)
-    return posts.slice(0, limit)
+    return this._runOperation(async () => {
+      const sources = [
+        this._postsFrom(this.myPublicKeyHex, this.myBee),
+        ...[...this.followed.entries()].map(([hex, entry]) => this._postsFrom(hex, entry.bee))
+      ]
+      const groups = await Promise.all(sources)
+      const posts = groups.flat().sort((a, b) => b.timestamp - a.timestamp)
+      return posts.slice(0, limit)
+    })
   }
 }
 

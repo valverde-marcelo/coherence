@@ -36,6 +36,10 @@ recriar identidade nenhuma.
   renderer só fala com ele via IPC (`contextIsolation: true`, `nodeIntegration: false`).
 - **`renderer/`** — feed, formulário de publicar (texto + imagem), seguir por chave,
   editar perfil, contador de peers conectados.
+- **Recuperação de identidade** — o backup `identity.json` inclui a chave do Hypercore.
+  Ao importar em uma instalação sem `corestore`, o app aguarda um seeder, recupera perfil,
+  posts e seguidores e só então libera escrita. Sem seeder dentro do timeout, é possível
+  começar do zero preservando a identidade.
 
 ## Como rodar
 
@@ -44,8 +48,9 @@ npm install
 npm start          # abre o app Electron
 ```
 
-Repita em outra máquina/rede (como você já validou com o protótipo original) e sigam-se
-pela chave pública mostrada na barra lateral de cada um.
+Para recuperar uma conta em outra instalação, importe apenas o `identity.json` exportado.
+O aplicativo aguardará um seeder que tenha o seu Hypercore; depois do timeout, você poderá
+começar do zero mantendo a mesma identidade.
 
 ## Testes automatizados
 
@@ -53,7 +58,7 @@ pela chave pública mostrada na barra lateral de cada um.
 npm test
 ```
 
-Isso roda 4 testes de integração reais (`test/`) contra uma **DHT local isolada**
+Isso roda testes de integração reais (`test/`) contra uma **DHT local isolada**
 (`hyperdht/testnet`, sem precisar de internet), cobrindo:
 
 - `test-posts-and-unfollow.js` — validação de posts (texto/imagem/limite de tamanho) e follow/unfollow.
@@ -61,6 +66,10 @@ Isso roda 4 testes de integração reais (`test/`) contra uma **DHT local isolad
 - `test-integration-seeding.js` — **o requisito de semeadura**: Bob segue Alice, Alice fica
   offline, Carol passa a seguir Alice mesmo assim e recebe os posts dela através do Bob.
 - `test-persistence.js` — identidade, posts e lista de seguidos sobrevivem a um reinício do app.
+- `test-followers-records.js` — registros de seguidores persistem após reinícios.
+- `test-restart-after-stop-race.js` — leitura concorrente durante stop e primeiro post após reabertura.
+- `test-identity-recovery.js` — recuperação de perfil, posts e seguidores usando apenas `identity.json`.
+- `test-recovery-timeout.js` — timeout sem seeder e fallback para um core novo.
 
 Todos passando no momento da entrega.
 
@@ -71,8 +80,8 @@ Todos passando no momento da entrega.
 - **Avatar de perfil** — campo já existe no modelo de dados, falta UI pra definir.
 - **Paginação do feed** — hoje `getFeed()` lê tudo; ok para poucos posts, precisa de
   range/`limit` real conforme o histórico cresce.
-- **Multi-dispositivo** — usar a mesma identidade em duas máquinas ao mesmo tempo pode gerar
-  inconsistência no Hyperbee (é um único escritor). Vale pensar numa política antes de liberar isso.
+- **Multi-dispositivo** — não escreva na mesma identidade simultaneamente em duas máquinas.
+  A recuperação baixa o histórico de um seeder e só depois reabre o core para escrita.
 - **Relay de fallback** — para CGNAT duplo, quando o hole punching não for suficiente
   (Hyperswarm já tenta UPnP/hole punching sozinho, mas não há um relay configurado ainda).
 - **Bloqueio/mute local** — não há moderação; como os posts são imutáveis, isso só faz

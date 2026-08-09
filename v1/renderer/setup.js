@@ -8,7 +8,12 @@ const setupEls = {
   createForm: document.getElementById('setup-create-form'),
   username: document.getElementById('setup-username'),
   error: document.getElementById('setup-error'),
-  status: document.getElementById('setup-status')
+  status: document.getElementById('setup-status'),
+  actions: document.querySelector('.setup-actions'),
+  createForm: document.getElementById('setup-create-form'),
+  recovery: document.getElementById('setup-recovery'),
+  recoveryStatus: document.getElementById('setup-recovery-status'),
+  startFromZero: document.getElementById('setup-start-from-zero')
 }
 
 function setupError(message) {
@@ -28,6 +33,17 @@ function setBusy(busy) {
   setupEls.username.disabled = busy
 }
 
+function showRecovery(state) {
+  window.__coherenceSetupActive = true
+  setupEls.screen.hidden = false
+  setupEls.actions.hidden = true
+  setupEls.createForm.hidden = true
+  setupEls.recovery.hidden = false
+  setupEls.recoveryStatus.textContent = state === 'expired'
+    ? window.coherenceI18n.text('recoveryExpired')
+    : window.coherenceI18n.text('recoveringIdentity')
+}
+
 async function bootSetup() {
   const settings = await window.p2p.setup.getSettings()
   setupEls.locale.value = settings.locale || 'pt-BR'
@@ -35,7 +51,15 @@ async function bootSetup() {
 
   const hasIdentity = await window.p2p.setup.checkIdentity()
   if (hasIdentity) {
-    await window.p2p.setup.startApp()
+    const result = await window.p2p.setup.startApp()
+    if (result && result.state === 'recovery') {
+      showRecovery('waiting')
+      return
+    }
+    if (result && result.state === 'recovery-expired') {
+      showRecovery('expired')
+      return
+    }
     setupEls.screen.hidden = true
     return
   }
@@ -43,6 +67,26 @@ async function bootSetup() {
   window.__coherenceSetupActive = true
   setupEls.screen.hidden = false
 }
+
+window.p2p.on('recovery-updated', (result) => {
+  if (result.state === 'recovered') {
+    window.location.reload()
+    return
+  }
+  if (result.state === 'expired') showRecovery('expired')
+})
+
+setupEls.startFromZero.addEventListener('click', async () => {
+  setupEls.startFromZero.disabled = true
+  setupEls.recoveryStatus.textContent = window.coherenceI18n.text('startingFromZero')
+  try {
+    await window.p2p.setup.startFromZero()
+    window.location.reload()
+  } catch (error) {
+    setupError(error.message)
+    setupEls.startFromZero.disabled = false
+  }
+})
 
 setupEls.locale.addEventListener('change', async () => {
   const settings = await window.p2p.setup.setSettings({ locale: setupEls.locale.value })

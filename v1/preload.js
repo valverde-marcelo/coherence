@@ -2,7 +2,7 @@
 
 const { contextBridge, ipcRenderer } = require('electron')
 
-const EVENTS = ['feed-updated', 'profile-updated', 'following-changed', 'peers-changed', 'following-status-update']
+const EVENTS = ['feed-updated', 'profile-updated', 'following-changed', 'peers-changed', 'following-status-update', 'recovery-updated']
 
 contextBridge.exposeInMainWorld('p2p', {
   getMyKey: () => ipcRenderer.invoke('p2p:get-my-key'),
@@ -24,7 +24,8 @@ contextBridge.exposeInMainWorld('p2p', {
     checkIdentity: () => ipcRenderer.invoke('setup:check-identity'),
     importIdentity: () => ipcRenderer.invoke('setup:import-identity'),
     createIdentity: (username) => ipcRenderer.invoke('setup:create-identity', username),
-    startApp: () => ipcRenderer.invoke('setup:start-app')
+    startApp: () => ipcRenderer.invoke('setup:start-app'),
+    startFromZero: () => ipcRenderer.invoke('setup:start-from-zero')
   },
   exportIdentity: () => ipcRenderer.invoke('export-identity'),
   resetApp: () => ipcRenderer.invoke('reset-app'),
