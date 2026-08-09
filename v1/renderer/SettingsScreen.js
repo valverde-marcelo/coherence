@@ -11,8 +11,8 @@ window.coherenceSettings = {
     this.els.modal.hidden = true
   },
   selectTab(tab) {
-    this.els.tabs.forEach((button) => button.classList.toggle('tab-btn--active', button.dataset.tab === tab))
-    this.els.panels.forEach((panel) => { panel.hidden = panel.dataset.panel !== tab })
+    this.els.tabs.forEach((button) => button.classList.toggle('tab-btn--active', button.dataset.settingsTab === tab))
+    this.els.panels.forEach((panel) => { panel.hidden = panel.dataset.settingsPanel !== tab })
     if (tab === 'about') window.coherenceAbout.render(this.els.about)
     if (tab === 'faq') window.coherenceFaq.render(this.els.faq)
   },
@@ -55,7 +55,7 @@ window.coherenceSettings = {
     document.getElementById('open-settings-btn').addEventListener('click', () => this.open())
     document.getElementById('close-settings-btn').addEventListener('click', () => this.close())
     this.els.modal.addEventListener('click', (event) => { if (event.target === this.els.modal) this.close() })
-    this.els.tabs.forEach((button) => button.addEventListener('click', () => this.selectTab(button.dataset.tab)))
+    this.els.tabs.forEach((button) => button.addEventListener('click', () => this.selectTab(button.dataset.settingsTab)))
     this.els.locale.addEventListener('change', async () => {
       const settings = await window.p2p.setup.setSettings({ locale: this.els.locale.value })
       window.coherenceI18n.apply(settings.locale)
