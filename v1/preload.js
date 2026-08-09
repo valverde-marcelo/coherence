@@ -26,6 +26,11 @@ contextBridge.exposeInMainWorld('p2p', {
     createIdentity: (username) => ipcRenderer.invoke('setup:create-identity', username),
     startApp: () => ipcRenderer.invoke('setup:start-app')
   },
+  exportIdentity: () => ipcRenderer.invoke('export-identity'),
+  resetApp: () => ipcRenderer.invoke('reset-app'),
+  getAppVersion: () => ipcRenderer.invoke('get-app-version'),
+  getDonationQr: () => ipcRenderer.invoke('get-donation-qr'),
+  openExternal: (url) => ipcRenderer.invoke('open-external', url),
 
   /** Assina um evento vindo do processo main. Retorna uma função para cancelar a assinatura. */
   on(eventName, callback) {

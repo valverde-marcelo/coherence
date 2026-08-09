@@ -301,6 +301,8 @@ button, input, textarea {
 
 .btn--ghost { background: transparent; border-color: var(--line); color: var(--paper); }
 .btn--ghost:hover { border-color: var(--relay-dim); color: var(--relay); }
+.btn--danger { background: transparent; border-color: rgba(217, 119, 87, 0.65); color: var(--danger); }
+.btn--danger:hover { background: rgba(217, 119, 87, 0.12); border-color: var(--danger); }
 
 .btn--small { padding: 6px 10px; font-size: 11.5px; }
 .btn--tiny { padding: 4px 8px; font-size: 10.5px; }
@@ -691,4 +693,57 @@ button, input, textarea {
 
 .follower-name:hover {
   color: var(--signal);
+}
+
+/* Settings modal */
+.settings-button { width: 100%; text-align: left; margin-bottom: -10px; }
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(5, 8, 11, 0.78);
+}
+.settings-modal, .confirm-dialog {
+  width: min(720px, 100%);
+  max-height: min(720px, 90vh);
+  overflow: auto;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.45);
+}
+.settings-header { display: flex; align-items: center; justify-content: space-between; padding: 22px 24px 14px; }
+.settings-header h2, .confirm-dialog h2 { margin: 0; font-family: var(--sans); font-size: 25px; font-weight: 400; }
+.settings-tabs { display: flex; padding: 0 24px; border-bottom: 1px solid var(--line); }
+.settings-tabs .tab-btn { flex: none; padding: 11px 14px; }
+.settings-body { padding: 24px; }
+.settings-locale-field { max-width: 360px; margin-bottom: 26px; }
+.settings-actions, .modal-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.settings-status { margin: 16px 0 0; color: var(--relay); font-family: var(--mono); font-size: 11px; }
+.about-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+.about-grid h2 { margin: 6px 0 10px; font-family: var(--sans); font-size: 30px; font-weight: 400; }
+.about-grid p { color: var(--muted); line-height: 1.55; }
+.about-version strong { color: var(--paper); font-family: var(--mono); font-weight: 400; }
+.about-link { color: var(--relay); text-decoration: none; }
+.about-link:hover { text-decoration: underline; }
+.about-stack { margin: 10px 0 0; padding-left: 18px; color: var(--paper); line-height: 1.9; }
+.donation-block { grid-column: 1 / -1; display: flex; align-items: center; gap: 18px; padding-top: 20px; border-top: 1px solid var(--line); }
+.donation-qr { width: 150px; height: 150px; padding: 8px; background: #fff; image-rendering: pixelated; }
+.donation-block p { margin: 0; color: var(--paper); }
+.faq-item { border-bottom: 1px solid var(--line); }
+.faq-item summary { padding: 15px 4px; color: var(--paper); cursor: pointer; font-size: 14px; }
+.faq-item summary::marker { color: var(--relay); }
+.faq-item p { margin: 0; padding: 0 24px 16px 4px; color: var(--muted); line-height: 1.6; }
+.confirm-dialog { width: min(480px, 100%); padding: 24px; }
+.confirm-dialog-message { color: var(--muted); line-height: 1.6; }
+.modal-actions { justify-content: flex-end; margin-top: 24px; }
+
+@media (max-width: 620px) {
+  .about-grid { grid-template-columns: 1fr; gap: 20px; }
+  .donation-block { grid-column: auto; }
+  .settings-body, .settings-header { padding-left: 18px; padding-right: 18px; }
+  .settings-tabs { padding: 0 12px; }
 }

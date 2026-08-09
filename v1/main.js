@@ -2,7 +2,7 @@
 
 const path = require('node:path')
 const fs = require('node:fs')
-const { app, BrowserWindow, ipcMain, dialog } = require('electron')
+const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron')
 const { P2PNode } = require('./src/p2p-node')
 
 let mainWindow = null
@@ -139,6 +139,42 @@ function registerIpcHandlers() {
     return { publicKeyHex: node.myPublicKeyHex }
   })
   ipcMain.handle('setup:start-app', () => startNode())
+  ipcMain.handle('export-identity', async () => {
+    const result = await dialog.showSaveDialog(mainWindow, {
+      title: 'Exportar identidade',
+      defaultPath: 'identity.json',
+      filters: [{ name: 'Identity JSON', extensions: ['json'] }]
+    })
+    if (result.canceled || !result.filePath) return { success: false, canceled: true }
+    fs.copyFileSync(path.join(dataDir, 'identity.json'), result.filePath)
+    return { success: true }
+  })
+  ipcMain.handle('reset-app', async () => {
+    try {
+      if (statusUpdateInterval) clearInterval(statusUpdateInterval)
+      if (node) {
+        const toClose = node
+        node = null
+        await toClose.stop()
+      }
+      fs.rmSync(dataDir, { recursive: true, force: true })
+      app.relaunch()
+      app.exit(0)
+      return { success: true }
+    } catch (error) {
+      console.error('[Reset]', error)
+      return { success: false }
+    }
+  })
+  ipcMain.handle('get-app-version', () => app.getVersion())
+  ipcMain.handle('get-donation-qr', async () => {
+    const QRCode = require('qrcode')
+    return QRCode.toDataURL('https://github.com/valverde-marcelo/coherence', { width: 180, margin: 1 })
+  })
+  ipcMain.handle('open-external', (_event, url) => {
+    if (typeof url !== 'string' || !/^https:\/\//i.test(url)) throw new Error('URL externa inválida.')
+    return shell.openExternal(url)
+  })
 }
 
 async function main() {

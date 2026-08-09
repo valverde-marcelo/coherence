@@ -14,7 +14,8 @@
     "hyperbee": "^2.27.3",
     "hypercore": "^11.35.0",
     "hypercore-crypto": "^3.7.0",
-    "hyperswarm": "^4.17.0"
+    "hyperswarm": "^4.17.0",
+    "qrcode": "^1.5.4"
   },
   "devDependencies": {
     "electron": "^43.2.0"

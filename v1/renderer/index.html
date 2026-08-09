@@ -132,6 +132,7 @@
 
     <!-- RIGHT SIDEBAR: Following/Followers List -->
     <aside class="right-sidebar">
+      <button id="open-settings-btn" type="button" class="btn btn--ghost btn--small settings-button" title="Configurações">⚙ <span data-i18n="settings">configurações</span></button>
       <button id="open-search-btn" type="button" class="btn btn--ghost btn--small" style="width: 100%; text-align: left; margin-bottom: 16px;">🔍 pesquisar</button>
       
       <!-- Tabs -->
@@ -162,6 +163,34 @@
       </div>
     </aside>
 
+  </div>
+
+  <div id="settings-modal" class="modal-overlay" hidden>
+    <section class="settings-modal" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+      <header class="settings-header">
+        <h2 id="settings-title" data-i18n="settings">configurações</h2>
+        <button id="close-settings-btn" type="button" class="btn btn--ghost btn--tiny" data-i18n="close">fechar</button>
+      </header>
+      <nav class="settings-tabs" aria-label="Settings">
+        <button type="button" class="tab-btn tab-btn--active" data-settings-tab="settings" data-i18n="settings">configurações</button>
+        <button type="button" class="tab-btn" data-settings-tab="about" data-i18n="about">sobre</button>
+        <button type="button" class="tab-btn" data-settings-tab="faq" data-i18n="faq">FAQ</button>
+      </nav>
+      <div class="settings-body">
+        <div data-settings-panel="settings">
+          <label class="field settings-locale-field"><span data-i18n="settingsLanguage">idioma</span>
+            <select id="settings-locale" class="setup-select"><option value="pt-BR">Português (pt-BR)</option><option value="en-US">English (en-US)</option></select>
+          </label>
+          <div class="settings-actions">
+            <button id="export-identity-btn" type="button" class="btn btn--ghost" data-i18n="exportIdentity">exportar identidade</button>
+            <button id="reset-app-btn" type="button" class="btn btn--danger" data-i18n="resetApp">resetar aplicação</button>
+          </div>
+          <p id="settings-status" class="settings-status" hidden></p>
+        </div>
+        <div id="about-panel" data-settings-panel="about" hidden></div>
+        <div id="faq-panel" data-settings-panel="faq" hidden></div>
+      </div>
+    </section>
   </div>
 
   <template id="post-template">
@@ -203,6 +232,10 @@
 
   <script src="i18n.js"></script>
   <script src="setup.js"></script>
+  <script src="ConfirmDialog.js"></script>
+  <script src="AboutTab.js"></script>
+  <script src="FAQTab.js"></script>
+  <script src="SettingsScreen.js"></script>
   <script src="renderer.js"></script>
 </body>
 </html>
