@@ -93,7 +93,7 @@ class P2PNode extends EventEmitter {
    * @param {string} opts.dataDir - pasta onde ficam identity.json e o storage do Corestore
    * @param {number} [opts.readTimeoutMs] - timeout ao ler dados de peers seguidos
    */
-  constructor({ dataDir, readTimeoutMs = 4000, recoveryTimeoutMs = 30000, swarmOpts = {} }) {
+  constructor({ dataDir, readTimeoutMs = 4000, recoveryTimeoutMs = 90000, swarmOpts = {} }) {
     super()
     this.dataDir = dataDir
     this.readTimeoutMs = readTimeoutMs
@@ -349,7 +349,7 @@ class P2PNode extends EventEmitter {
     const profile = await this.myBee.get('profile')
     const followList = (profile && profile.value.followList) || []
     await Promise.all(followList.map((hex) =>
-      this._openFollowed(hex).catch((err) => this.emit('error', err))
+      this._openFollowed(hex, { waitForProfile: true }).catch((err) => this.emit('error', err))
     ))
 
     this.ready = true
@@ -369,7 +369,7 @@ class P2PNode extends EventEmitter {
 
         const download = this.myCore.download({ start: 0, end: this.myCore.length })
         this.recoveryDownload = download
-        const downloaded = await withTimeout(download.done().then(() => true), 5000, false)
+        const downloaded = await withTimeout(download.done().then(() => true), 15000, false)
         if (this.recoveryDownload === download) this.recoveryDownload = null
         if (this.recoveryCancelled) return
         if (!downloaded) {
@@ -389,7 +389,7 @@ class P2PNode extends EventEmitter {
           await this.myBee.ready()
           await this._joinTopic(this.myCore)
           await Promise.all(followList.map((hex) =>
-            this._openFollowed(hex).catch((err) => this.emit('error', err))
+            this._openFollowed(hex, { waitForProfile: true }).catch((err) => this.emit('error', err))
           ))
 
           this.recoveryState = 'recovered'
@@ -533,7 +533,7 @@ class P2PNode extends EventEmitter {
    * Carrega os dados de um peer (core + bee) e envia follow-request.
    * Chamado quando você explicitamente segue alguém.
    */
-  async _openFollowed(pubKeyHex) {
+  async _openFollowed(pubKeyHex, { waitForProfile = false } = {}) {
     const entry = await this._loadFollowerData(pubKeyHex)
     
     // Enviar follow-request para todos os peers conectados neste core
@@ -541,8 +541,24 @@ class P2PNode extends EventEmitter {
     this._sendFollowRequestsToPeers(pubKeyHex, entry).catch((err) => {
       console.log('[_openFollowed] Falha ao enviar follow-requests:', err.message)
     })
+
+    if (waitForProfile) await this._waitForFollowedProfile(entry)
     
     return entry
+  }
+
+  async _waitForFollowedProfile(entry) {
+    const deadline = Date.now() + Math.max(this.readTimeoutMs, 10000)
+    while (Date.now() < deadline && this.lifecycleState !== 'stopping' && this.lifecycleState !== 'stopped') {
+      const profile = await withTimeout(entry.bee.get('profile'), 1000, null)
+      if (profile) return profile
+      await withTimeout(entry.core.update({ wait: true }), 1000, null)
+      if (entry.core.length > 0) {
+        const download = entry.core.download({ start: 0, end: entry.core.length })
+        await withTimeout(download.done().then(() => true), 5000, false)
+      }
+    }
+    return null
   }
 
   /**
