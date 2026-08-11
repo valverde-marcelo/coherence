@@ -2,11 +2,20 @@
 
 const path = require('node:path')
 const fs = require('node:fs')
+const os = require('node:os')
 const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron')
 const { P2PNode } = require('./src/p2p-node')
+const {
+  publicKeyHexFromIdentity,
+  readIdentity,
+  userDataDir,
+  listUserKeys,
+  parseUserKeyArg
+} = require('./src/user-data')
 
 let mainWindow = null
 let node = null
+let dataRoot = null
 let dataDir = null
 let statusUpdateInterval = null
 let nodeLifecycle = Promise.resolve()
@@ -44,6 +53,63 @@ function validateIdentity(identity) {
   }
 }
 
+function setDataDirFromIdentity(identity) {
+  dataDir = userDataDir(dataRoot, publicKeyHexFromIdentity(identity))
+  fs.mkdirSync(dataDir, { recursive: true })
+  return dataDir
+}
+
+function migrateLegacyData() {
+  const legacyIdentityFile = path.join(dataRoot, 'identity.json')
+  const identity = readIdentity(legacyIdentityFile)
+  if (!identity) return false
+  const targetDir = userDataDir(dataRoot, publicKeyHexFromIdentity(identity))
+  fs.mkdirSync(targetDir, { recursive: true })
+  for (const entry of fs.readdirSync(dataRoot, { withFileTypes: true })) {
+    if (entry.name === path.basename(targetDir)) continue
+    fs.renameSync(path.join(dataRoot, entry.name), path.join(targetDir, entry.name))
+  }
+  return true
+}
+
+function isNewUserRequested() {
+  return process.argv.includes('--new-user') ||
+    app.commandLine.hasSwitch('new-user') ||
+    process.env.npm_config_new_user === 'true' ||
+    process.env.npm_config_new_user === '1'
+}
+
+function resolveDataDir() {
+  migrateLegacyData()
+  const requestedKey = parseUserKeyArg()
+  const newUserRequested = isNewUserRequested()
+  const keys = listUserKeys(dataRoot)
+  if (newUserRequested && !requestedKey) {
+    dataDir = dataRoot
+  } else if (requestedKey) {
+    dataDir = userDataDir(dataRoot, requestedKey)
+    const identity = readIdentity(path.join(dataDir, 'identity.json'))
+    if (identity && publicKeyHexFromIdentity(identity) !== requestedKey) {
+      throw new Error('A identidade encontrada não corresponde à chave informada em --user-key.')
+    }
+  } else if (keys.length === 1) {
+    dataDir = userDataDir(dataRoot, keys[0])
+  } else if (keys.length > 1 && !newUserRequested) {
+    throw new Error('Há mais de um usuário local. Inicie com --user-key <chave-publica> ou --new-user.')
+  } else {
+    dataDir = dataRoot
+  }
+}
+
+function configureElectronDataPaths() {
+  const profileName = isNewUserRequested() && dataDir === dataRoot
+    ? path.join('new-user', String(process.pid))
+    : path.basename(dataDir)
+  const electronDataDir = path.join(os.tmpdir(), 'coherence-electron', profileName)
+  app.setPath('userData', electronDataDir)
+  app.setPath('sessionData', path.join(electronDataDir, 'session'))
+}
+
 async function startNode({ recovery = false } = {}) {
   const operation = nodeLifecycle.then(async () => {
     if (node) return node.myPublicKeyHex
@@ -64,7 +130,12 @@ async function startNode({ recovery = false } = {}) {
       await startedNode.stop().catch(() => {})
       throw error
     }
-    console.log('Nó P2P pronto. Chave pública:', startedNode.myPublicKeyHex)
+    console.log(
+      startedNode.lifecycleState === 'recovery'
+        ? 'Nó P2P aguardando recuperação. Chave pública:'
+        : 'Nó P2P pronto. Chave pública:',
+      startedNode.myPublicKeyHex
+    )
     statusUpdateInterval = setInterval(async () => {
       if (node !== startedNode || startedNode.lifecycleState !== 'ready') return
       if (mainWindow && !mainWindow.isDestroyed()) {
@@ -154,6 +225,7 @@ function registerIpcHandlers() {
     const sourcePath = result.filePaths[0]
     const identity = JSON.parse(fs.readFileSync(sourcePath, 'utf8'))
     validateIdentity(identity)
+    setDataDirFromIdentity(identity)
     fs.mkdirSync(dataDir, { recursive: true })
     fs.copyFileSync(sourcePath, path.join(dataDir, 'identity.json'))
     return { canceled: false, publicKeyHex: await startNode({ recovery: true }), state: node.lifecycleState }
@@ -164,6 +236,7 @@ function registerIpcHandlers() {
     }
     const crypto = require('node:crypto')
     const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519')
+    setDataDirFromIdentity({ publicKey: publicKey.export({ type: 'spki', format: 'pem' }) })
     fs.mkdirSync(dataDir, { recursive: true })
     fs.writeFileSync(path.join(dataDir, 'identity.json'), JSON.stringify({
       publicKey: publicKey.export({ type: 'spki', format: 'pem' }),
@@ -180,11 +253,17 @@ function registerIpcHandlers() {
     })
     return { publicKeyHex, state: node.lifecycleState }
   })
+  ipcMain.handle('setup:get-state', () => node ? node.lifecycleState : 'stopped')
   ipcMain.handle('setup:start-from-zero', async () => {
     await stopNode()
     fs.rmSync(path.join(dataDir, 'corestore'), { recursive: true, force: true })
     const publicKeyHex = await startNode()
     return { publicKeyHex, state: node.lifecycleState }
+  })
+  ipcMain.handle('setup:cancel-recovery', async () => {
+    await stopNode()
+    app.quit()
+    return { success: true }
   })
   ipcMain.handle('export-identity', async () => {
     const result = await dialog.showSaveDialog(mainWindow, {
@@ -199,7 +278,12 @@ function registerIpcHandlers() {
   ipcMain.handle('reset-app', async () => {
     try {
       await stopNode()
-      fs.rmSync(dataDir, { recursive: true, force: true })
+      fs.rmSync(dataDir, {
+        recursive: true,
+        force: true,
+        maxRetries: 5,
+        retryDelay: 250
+      })
       app.relaunch()
       app.exit(0)
       return { success: true }
@@ -220,7 +304,9 @@ function registerIpcHandlers() {
 }
 
 async function main() {
-  dataDir = path.join(app.getPath('documents'), 'coherence-data')
+  dataRoot = path.join(app.getPath('documents'), 'coherence-data')
+  resolveDataDir()
+  configureElectronDataPaths()
 
   registerIpcHandlers()
   await app.whenReady()

@@ -808,24 +808,26 @@ window.p2p.on('following-changed', async () => {
   }
 })
 
-// Polling de perfis a cada 10 segundos para manter cache atualizado
-setInterval(async () => {
-  try {
-    const list = await window.p2p.getFollowing()
-    for (const peer of list) {
-      if (peer.publicKeyHex) {
-        try {
-          const profile = await window.p2p.getProfileOf(peer.publicKeyHex)
-          if (profile) profileCache[peer.publicKeyHex] = profile
-        } catch (err) {
-          // Silenciar erros de polling individual
+// O polling só pode começar depois que o fluxo de setup criou ou importou o nó.
+function startProfilePolling() {
+  setInterval(async () => {
+    try {
+      const list = await window.p2p.getFollowing()
+      for (const peer of list) {
+        if (peer.publicKeyHex) {
+          try {
+            const profile = await window.p2p.getProfileOf(peer.publicKeyHex)
+            if (profile) profileCache[peer.publicKeyHex] = profile
+          } catch (err) {
+            // Silenciar erros de polling individual
+          }
         }
       }
+    } catch (err) {
+      // Silenciar erros de polling geral
     }
-  } catch (err) {
-    // Silenciar erros de polling geral
-  }
-}, 10000)
+  }, 10000)
+}
 
 // =====================================================================
 // EVENTOS DO BACKEND
@@ -859,4 +861,5 @@ window.p2p.on('following-status-update', (list) => {
   await loadIdentity()
   await loadFollowing()
   await loadFeed()
+  startProfilePolling()
 })()

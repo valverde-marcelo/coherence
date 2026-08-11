@@ -49,6 +49,40 @@ npm start          # abre o app Electron
 ```
 
 Para recuperar uma conta em outra instalação, importe apenas o `identity.json` exportado.
+
+## Múltiplas instâncias e usuários locais
+
+Os dados de cada identidade ficam isolados em `coherence-data/<chave-publica>`. A aplicação não usa bloqueio de instância, portanto contas diferentes podem ser executadas ao mesmo tempo.
+
+Quando houver mais de uma conta local, informe a chave pública da conta que será aberta:
+
+```bash
+npm start -- --user-key <chave-publica-hexadecimal>
+```
+
+Para abrir o fluxo de criação de uma nova conta mesmo quando já existem contas locais, use `--new-user`:
+
+```bash
+npm start -- --new-user
+```
+
+Também é possível usar o script dedicado, que evita que o npm interprete a opção como configuração:
+
+```bash
+npm run new-user
+```
+
+O reset pela interface e `npm run reset` removem apenas a conta atual. Com várias contas, o reset via terminal precisa indicar a chave:
+
+```bash
+npm run reset -- --user-key=<chave-publica-hexadecimal>
+```
+
+Para remover todos os usuários locais, use exclusivamente o comando de linha de comando:
+
+```bash
+npm run reset-all
+```
 O aplicativo aguardará um seeder que tenha o seu Hypercore; depois do timeout, você poderá
 começar do zero mantendo a mesma identidade.
 

@@ -358,8 +358,7 @@ class P2PNode extends EventEmitter {
   }
 
   async _recoverFromNetwork(keyPair) {
-    const deadline = Date.now() + this.recoveryTimeoutMs
-    while (Date.now() < deadline && this.lifecycleState === 'recovery' && !this.recoveryCancelled) {
+    while (this.lifecycleState === 'recovery' && !this.recoveryCancelled) {
       try {
         await withTimeout(this.myCore.update({ wait: true }), 3000, null)
         if (this.myCore.length === 0) {
@@ -406,11 +405,6 @@ class P2PNode extends EventEmitter {
       await new Promise((resolve) => setTimeout(resolve, 500))
     }
 
-    if (this.lifecycleState === 'recovery' && !this.recoveryCancelled) {
-      this.recoveryState = 'expired'
-      this.lifecycleState = 'recovery-expired'
-      this.emit('recovery-updated', { state: this.recoveryState, timeoutMs: this.recoveryTimeoutMs })
-    }
   }
 
   async stop() {

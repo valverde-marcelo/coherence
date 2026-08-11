@@ -21,12 +21,11 @@ function tmpDir(name) {
   fs.rmSync(path.join(dataDir, 'corestore'), { recursive: true, force: true })
   const recovery = new P2PNode({
     dataDir,
-    recoveryTimeoutMs: 1000,
     swarmOpts: { dht: testnet.createNode() }
   })
   await recovery.start({ recovery: true })
-  await recovery.recoveryPromise
-  const expired = recovery.lifecycleState === 'recovery-expired' && fs.existsSync(identityPath)
+  await new Promise((resolve) => setTimeout(resolve, 1500))
+  const keepsTrying = recovery.lifecycleState === 'recovery' && fs.existsSync(identityPath)
   await recovery.stop()
 
   fs.rmSync(path.join(dataDir, 'corestore'), { recursive: true, force: true })
@@ -35,14 +34,14 @@ function tmpDir(name) {
   const post = await fresh.publishPost({ tipo: 'texto', texto: 'primeiro post depois do zero' })
   const startedFromZero = post.texto === 'primeiro post depois do zero'
 
-  console.log('Recovery sem seeder expirou?', expired)
+  console.log('Recovery sem seeder continua aguardando?', keepsTrying)
   console.log('Identity.json foi preservado?', fs.existsSync(identityPath))
   console.log('Primeiro post no novo core?', startedFromZero)
-  console.log('\nRESULTADO:', expired && startedFromZero ? 'PASSOU' : 'FALHOU')
+  console.log('\nRESULTADO:', keepsTrying && startedFromZero ? 'PASSOU' : 'FALHOU')
 
   await fresh.stop()
   await testnet.destroy()
-  process.exit(expired && startedFromZero ? 0 : 1)
+  process.exit(keepsTrying && startedFromZero ? 0 : 1)
 })().catch((error) => {
   console.error('ERRO NO TESTE:', error)
   process.exit(1)

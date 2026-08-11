@@ -13,7 +13,8 @@ const setupEls = {
   createForm: document.getElementById('setup-create-form'),
   recovery: document.getElementById('setup-recovery'),
   recoveryStatus: document.getElementById('setup-recovery-status'),
-  startFromZero: document.getElementById('setup-start-from-zero')
+  startFromZero: document.getElementById('setup-start-from-zero'),
+  cancelRecovery: document.getElementById('setup-cancel-recovery')
 }
 
 function setupError(message) {
@@ -44,6 +45,20 @@ function showRecovery(state) {
     : window.coherenceI18n.text('recoveringIdentity')
 }
 
+function monitorRecovery() {
+  const timer = setInterval(async () => {
+    try {
+      const state = await window.p2p.setup.getState()
+      if (state === 'ready') {
+        clearInterval(timer)
+        window.location.reload()
+      }
+    } catch {
+      // O processo principal pode estar encerrando após o cancelamento.
+    }
+  }, 1000)
+}
+
 async function bootSetup() {
   const settings = await window.p2p.setup.getSettings()
   setupEls.locale.value = settings.locale || 'pt-BR'
@@ -54,6 +69,7 @@ async function bootSetup() {
     const result = await window.p2p.setup.startApp()
     if (result && result.state === 'recovery') {
       showRecovery('waiting')
+      monitorRecovery()
       return
     }
     if (result && result.state === 'recovery-expired') {
@@ -84,6 +100,19 @@ setupEls.startFromZero.addEventListener('click', async () => {
     window.location.reload()
   } catch (error) {
     setupError(error.message)
+    setupEls.startFromZero.disabled = false
+  }
+})
+
+setupEls.cancelRecovery.addEventListener('click', async () => {
+  setupEls.cancelRecovery.disabled = true
+  setupEls.startFromZero.disabled = true
+  setupEls.recoveryStatus.textContent = window.coherenceI18n.text('closing')
+  try {
+    await window.p2p.setup.cancelRecovery()
+  } catch (error) {
+    setupError(error.message)
+    setupEls.cancelRecovery.disabled = false
     setupEls.startFromZero.disabled = false
   }
 })

@@ -6,7 +6,9 @@
   "private": true,
   "scripts": {
     "start": "electron .",
+    "new-user": "electron . --new-user",
     "reset": "node scripts/reset.js",
+    "reset-all": "node scripts/reset.js --all",
     "test": "node test/test-posts-and-unfollow.js && node test/test-integration-follow-sync.js && node test/test-integration-seeding.js && node test/test-persistence.js && node test/test-followers-records.js && node test/test-restart-after-stop-race.js && node test/test-identity-recovery.js && node test/test-recovery-timeout.js"
   },
   "dependencies": {
