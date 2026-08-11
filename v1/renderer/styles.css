@@ -94,8 +94,96 @@ body {
 .setup-create-form input:focus { outline: none; border-color: var(--relay-dim); }
 .setup-status { margin: 16px 0 0; color: var(--relay); font-family: var(--mono); font-size: 11px; }
 
+/* ---------------- setup: recuperação (buscando seeders) ---------------- */
+
+.setup-recovery {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+}
+
+/* Radar: anéis concêntricos + varredura rotativa + núcleo pulsante */
+.recovery-anim {
+  position: relative;
+  width: 168px;
+  height: 168px;
+  margin: 6px auto 12px;
+}
+
+.recovery-anim__ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1px solid var(--relay-dim);
+  opacity: 0.5;
+}
+.recovery-anim__ring--inner { inset: 22%; }
+
+.recovery-anim__sweep {
+  position: absolute;
+  inset: 4%;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, rgba(79, 179, 166, 0.5), transparent 30%);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 1px), #000 calc(100% - 1px));
+          mask: radial-gradient(farthest-side, transparent calc(100% - 1px), #000 calc(100% - 1px));
+  animation: recovery-spin 2.6s linear infinite;
+}
+
+.recovery-anim__core {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  border-radius: 50%;
+  background: var(--relay);
+  box-shadow: 0 0 18px var(--relay);
+  animation: recovery-pulse 1.6s ease-in-out infinite;
+}
+
+.recovery-anim__blip {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  margin: -4px 0 0 -4px;
+  border-radius: 50%;
+  background: var(--signal);
+  box-shadow: 0 0 10px var(--signal);
+  animation: recovery-blip 3.2s ease-in-out infinite;
+}
+.recovery-anim__blip--1 { top: 24%; left: 68%; animation-delay: 0s; }
+.recovery-anim__blip--2 { top: 62%; left: 28%; animation-delay: 0.5s; }
+.recovery-anim__blip--3 { top: 40%; left: 84%; animation-delay: 1s; }
+
+@keyframes recovery-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+@keyframes recovery-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.5); opacity: 0.6; }
+}
+@keyframes recovery-blip {
+  0%, 100% { transform: scale(0.4); opacity: 0.15; }
+  50% { transform: scale(1.2); opacity: 1; }
+}
+
+.setup-status--phase { margin-top: 4px; }
+.setup-status--meta { color: var(--muted); min-height: 16px; }
+
+.setup-recovery__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 22px;
+  width: 100%;
+}
+.setup-recovery__actions .btn { flex: 1; }
+
 @media (max-width: 520px) {
-  .setup-actions, .setup-create-form { flex-direction: column; align-items: stretch; }
+  .setup-actions, .setup-create-form, .setup-recovery__actions { flex-direction: column; align-items: stretch; }
 }
 
 button, input, textarea {

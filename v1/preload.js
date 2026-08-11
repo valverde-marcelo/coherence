@@ -26,6 +26,7 @@ contextBridge.exposeInMainWorld('p2p', {
     createIdentity: (username) => ipcRenderer.invoke('setup:create-identity', username),
     startApp: () => ipcRenderer.invoke('setup:start-app'),
     getState: () => ipcRenderer.invoke('setup:get-state'),
+    getRecoveryStatus: () => ipcRenderer.invoke('setup:get-recovery-status'),
     startFromZero: () => ipcRenderer.invoke('setup:start-from-zero'),
     cancelRecovery: () => ipcRenderer.invoke('setup:cancel-recovery')
   },

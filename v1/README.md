@@ -38,8 +38,11 @@ recriar identidade nenhuma.
   editar perfil, contador de peers conectados.
 - **Recuperação de identidade** — o backup `identity.json` inclui a chave do Hypercore.
   Ao importar em uma instalação sem `corestore`, o app aguarda um seeder, recupera perfil,
-  posts e seguidores e só então libera escrita. Sem seeder dentro do timeout, é possível
-  começar do zero preservando a identidade.
+  posts e seguidores e **só então** cria o `corestore` local e libera escrita. Enquanto a
+  identidade não for recuperada da rede, o usuário **nunca** tem acesso a ela: cancelar/fechar
+  durante a recuperação remove a importação pendente (o próximo início volta para as boas-vindas),
+  e um crash no meio do processo volta para a tela de recuperação. Sem seeder, a opção
+  "começar do zero" agora gera uma **identidade nova** (descarta a chave importada).
 
 ## Como rodar
 
@@ -83,8 +86,8 @@ Para remover todos os usuários locais, use exclusivamente o comando de linha de
 ```bash
 npm run reset-all
 ```
-O aplicativo aguardará um seeder que tenha o seu Hypercore; depois do timeout, você poderá
-começar do zero mantendo a mesma identidade.
+O aplicativo aguardará um seeder que tenha o seu Hypercore; depois do timeout, a opção
+"começar do zero" gera uma **identidade nova** (a chave importada não é reaproveitada).
 
 ## Testes automatizados
 
@@ -104,6 +107,8 @@ Isso roda testes de integração reais (`test/`) contra uma **DHT local isolada*
 - `test-restart-after-stop-race.js` — leitura concorrente durante stop e primeiro post após reabertura.
 - `test-identity-recovery.js` — recuperação de perfil, posts e seguidores usando apenas `identity.json`.
 - `test-recovery-timeout.js` — timeout sem seeder e fallback para um core novo.
+- `test-import-cancel-no-corestore.js` — importar sem seeder e cancelar não cria `corestore`;
+  recuperar com seeder promove o storage e grava o marcador de recuperação.
 
 Todos passando no momento da entrega.
 

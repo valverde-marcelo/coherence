@@ -10,7 +10,8 @@ const {
   readIdentity,
   userDataDir,
   listUserKeys,
-  parseUserKeyArg
+  parseUserKeyArg,
+  isRecovered
 } = require('./src/user-data')
 
 let mainWindow = null
@@ -172,6 +173,43 @@ function stopNode() {
   return operation
 }
 
+/**
+ * Remove a pasta de um usuário cuja identidade foi importada mas NUNCA recuperada
+ * (cancelar/fechar durante a recuperação, ou "começar do zero"). Ela contém apenas
+ * o identity.json copiado + corestore parcial/temporário + settings. Nunca remove
+ * a raiz (dataRoot), para não apagar outros usuários locais.
+ */
+function removePendingImport() {
+  if (!dataDir || dataDir === dataRoot) return
+  try {
+    fs.rmSync(dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 250 })
+    console.log('[removePendingImport] Importação pendente removida:', dataDir)
+  } catch (error) {
+    console.error('[removePendingImport]', error)
+  }
+}
+
+/**
+ * Gera uma identidade NOVA (par Ed25519), grava em um diretório próprio e inicia o nó.
+ * Usado tanto para "criar usuário" (com nome) quanto para "começar do zero" (sem nome),
+ * que agora DESCARTAR a identidade importada não recuperada.
+ */
+async function createNewUserIdentity(username) {
+  const crypto = require('node:crypto')
+  const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519')
+  setDataDirFromIdentity({ publicKey: publicKey.export({ type: 'spki', format: 'pem' }) })
+  fs.mkdirSync(dataDir, { recursive: true })
+  fs.writeFileSync(path.join(dataDir, 'identity.json'), JSON.stringify({
+    publicKey: publicKey.export({ type: 'spki', format: 'pem' }),
+    privateKey: privateKey.export({ type: 'pkcs8', format: 'pem' })
+  }, null, 2))
+  await startNode()
+  if (username) {
+    await node.updateMyProfile({ nome: String(username).trim() })
+  }
+  return { publicKeyHex: node.myPublicKeyHex }
+}
+
 async function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1140,
@@ -234,34 +272,40 @@ function registerIpcHandlers() {
     if (!/^[\p{L}\p{N} _.-]{1,30}$/u.test(String(username || '').trim())) {
       throw new Error('O nome deve ter de 1 a 30 caracteres e não pode conter @ ou #.')
     }
-    const crypto = require('node:crypto')
-    const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519')
-    setDataDirFromIdentity({ publicKey: publicKey.export({ type: 'spki', format: 'pem' }) })
-    fs.mkdirSync(dataDir, { recursive: true })
-    fs.writeFileSync(path.join(dataDir, 'identity.json'), JSON.stringify({
-      publicKey: publicKey.export({ type: 'spki', format: 'pem' }),
-      privateKey: privateKey.export({ type: 'pkcs8', format: 'pem' })
-    }, null, 2))
-    await startNode()
-    await node.updateMyProfile({ nome: String(username).trim() })
-    return { publicKeyHex: node.myPublicKeyHex }
+    return createNewUserIdentity(username)
   })
   ipcMain.handle('setup:start-app', async () => {
     const publicKeyHex = await startNode({
       recovery: fs.existsSync(path.join(dataDir, 'identity.json')) &&
-        !fs.existsSync(path.join(dataDir, 'corestore'))
+        !isRecovered(dataDir)
     })
     return { publicKeyHex, state: node.lifecycleState }
   })
   ipcMain.handle('setup:get-state', () => node ? node.lifecycleState : 'stopped')
+  ipcMain.handle('setup:get-recovery-status', () => {
+    if (!node || node.lifecycleState !== 'recovery') {
+      return { state: node ? node.lifecycleState : 'stopped', peerCount: 0, corePeers: 0 }
+    }
+    return {
+      state: node.lifecycleState,
+      peerCount: node.swarm ? node.swarm.connections.size : 0,
+      corePeers: node.myCore ? node.myCore.peers.length : 0
+    }
+  })
   ipcMain.handle('setup:start-from-zero', async () => {
     await stopNode()
-    fs.rmSync(path.join(dataDir, 'corestore'), { recursive: true, force: true })
-    const publicKeyHex = await startNode()
+    // Abandona a identidade importada não recuperada: descarta a pasta pendente
+    // e gera uma identidade NOVA (nunca reutiliza a chave importada).
+    removePendingImport()
+    const publicKeyHex = await createNewUserIdentity()
     return { publicKeyHex, state: node.lifecycleState }
   })
   ipcMain.handle('setup:cancel-recovery', async () => {
+    const wasRecovery = node && node.lifecycleState === 'recovery'
     await stopNode()
+    // Só remove a pasta se a identidade importada NUNCA foi recuperada; se a
+    // recuperação já tinha concluído (state 'ready'), os dados são preservados.
+    if (wasRecovery) removePendingImport()
     app.quit()
     return { success: true }
   })
@@ -310,7 +354,11 @@ async function main() {
 
   registerIpcHandlers()
   await app.whenReady()
-  if (fs.existsSync(path.join(dataDir, 'identity.json')) && fs.existsSync(path.join(dataDir, 'corestore'))) {
+  if (
+    fs.existsSync(path.join(dataDir, 'identity.json')) &&
+    fs.existsSync(path.join(dataDir, 'corestore')) &&
+    isRecovered(dataDir)
+  ) {
     await startNode()
   }
   await createWindow()
@@ -335,7 +383,11 @@ app.on('before-quit', (event) => {
   if (quitting || (!node && !statusUpdateInterval)) return
   event.preventDefault()
   quitting = true
-  stopNode().finally(() => app.exit(0))
+  const wasRecovery = node && node.lifecycleState === 'recovery'
+  stopNode().finally(() => {
+    if (wasRecovery) removePendingImport()
+    app.exit(0)
+  })
 })
 
 main().catch((err) => {

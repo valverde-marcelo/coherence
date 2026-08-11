@@ -30,6 +30,7 @@ const Hyperbee = require('hyperbee')
 const Hyperswarm = require('hyperswarm')
 
 const { loadOrCreateIdentity, saveCoreKey } = require('./identity')
+const { writeRecoveredMarker } = require('./user-data')
 
 const POST_PREFIX = 'post!'
 const POST_SEQ_DIGITS = 12
@@ -101,6 +102,11 @@ class P2PNode extends EventEmitter {
     this.swarmOpts = swarmOpts
     this.identityFile = path.join(dataDir, 'identity.json')
     this.storageDir = path.join(dataDir, 'corestore')
+    // Durante a recuperação, o storage fica em uma pasta TEMPORÁRIA (fora do local
+    // definitivo) e só é promovido para `corestore` depois que a identidade foi de
+    // fato recuperada da rede. Assim, um usuário importado mas não recuperado nunca
+    // cria a pasta `corestore` — que é o sinal de "usuário estabelecido".
+    this.recoveryStorageDir = path.join(dataDir, 'corestore.recovery')
 
     this.store = null
     this.swarm = null
@@ -164,7 +170,8 @@ class P2PNode extends EventEmitter {
 
     const { keyPair, coreKey } = loadOrCreateIdentity(this.identityFile)
 
-    this.store = new Corestore(this.storageDir)
+    const storeDir = recovery ? this._prepareRecoveryStorage() : this.storageDir
+    this.store = new Corestore(storeDir)
     this.swarm = new Hyperswarm(this.swarmOpts)
 
     // Toda conexão P2P recebida ou iniciada replica, de forma segura,
@@ -250,7 +257,7 @@ class P2PNode extends EventEmitter {
             socket.removeListener('data', handleData)
             
             // Iniciar replicação após handshake bem-sucedido
-            this.store.replicate(socket)
+            if (this.store) this.store.replicate(socket)
             
             // Aguardar follow-request por até 3 segundos
             const followRequestTimeout = setTimeout(() => {
@@ -284,7 +291,7 @@ class P2PNode extends EventEmitter {
           console.log('[swarm:connection:handshake] ⚠️ Timeout, continuando sem handshake')
           socket.removeListener('data', handleData)
           handshakeDone = true
-          this.store.replicate(socket)
+          if (this.store) this.store.replicate(socket)
           this.emit('peers-changed')
         }
       }, 1000)
@@ -308,7 +315,7 @@ class P2PNode extends EventEmitter {
       this.lifecycleState = 'recovery'
       this.recoveryState = 'waiting'
       this.recoveryPromise = new Promise((resolve, reject) => {
-        setImmediate(() => this._recoverFromNetwork(keyPair).then(resolve, reject))
+        setImmediate(() => this._recoverFromNetwork(keyPair, coreKey).then(resolve, reject))
       })
       this.recoveryPromise.catch((err) => this.emit('error', err))
       this.emit('recovery-updated', { state: this.recoveryState, timeoutMs: this.recoveryTimeoutMs })
@@ -352,12 +359,21 @@ class P2PNode extends EventEmitter {
       this._openFollowed(hex, { waitForProfile: true }).catch((err) => this.emit('error', err))
     ))
 
+    // Usuário estabelecido: dados já estão no disco (core gravável + perfil garantido).
+    writeRecoveredMarker(this.dataDir)
     this.ready = true
     this.lifecycleState = 'ready'
     this.emit('ready', { publicKeyHex: this.myPublicKeyHex })
   }
 
-  async _recoverFromNetwork(keyPair) {
+  /** Prepara (e limpa) o storage temporário usado durante a recuperação da identidade. */
+  _prepareRecoveryStorage() {
+    fs.rmSync(this.recoveryStorageDir, { recursive: true, force: true })
+    fs.mkdirSync(this.recoveryStorageDir, { recursive: true })
+    return this.recoveryStorageDir
+  }
+
+  async _recoverFromNetwork(keyPair, coreKey) {
     while (this.lifecycleState === 'recovery' && !this.recoveryCancelled) {
       try {
         await withTimeout(this.myCore.update({ wait: true }), 3000, null)
@@ -365,6 +381,11 @@ class P2PNode extends EventEmitter {
           await new Promise((resolve) => setTimeout(resolve, 500))
           continue
         }
+
+        // Um seeder apareceu e há dados para baixar — avisa a UI para mostrar
+        // a fase de sincronização ("seeder encontrado, baixando dados…").
+        this.recoveryState = 'syncing'
+        this.emit('recovery-updated', { state: this.recoveryState })
 
         const download = this.myCore.download({ start: 0, end: this.myCore.length })
         this.recoveryDownload = download
@@ -379,11 +400,19 @@ class P2PNode extends EventEmitter {
         const profile = await withTimeout(this.myBee.get('profile'), 3000, null)
         if (profile) {
           const followList = (profile && profile.value.followList) || []
+          const coreKeyHex = this.myCore.key.toString('hex')
           await this.swarm.leave(this.myCore.discoveryKey).catch(() => {})
           await this.myBee.close().catch(() => {})
           await this.myCore.close().catch(() => {})
-          this.myCore = this.store.get({ key: this.myCore.key, keyPair })
+          // Só agora — com os dados de fato recuperados — o storage temporário é
+          // promovido para o local definitivo (dataDir/corestore).
+          await this._promoteRecoveryStorage()
+
+          this.myCore = this.store.get({ key: coreKeyHex, keyPair })
           await this.myCore.ready()
+          if (!coreKey || coreKey !== coreKeyHex) {
+            saveCoreKey(this.identityFile, coreKeyHex)
+          }
           this.myBee = new Hyperbee(this.myCore, { keyEncoding: 'utf-8', valueEncoding: 'json' })
           await this.myBee.ready()
           await this._joinTopic(this.myCore)
@@ -391,6 +420,7 @@ class P2PNode extends EventEmitter {
             this._openFollowed(hex, { waitForProfile: true }).catch((err) => this.emit('error', err))
           ))
 
+          writeRecoveredMarker(this.dataDir)
           this.recoveryState = 'recovered'
           this.lifecycleState = 'ready'
           this.ready = true
@@ -405,6 +435,26 @@ class P2PNode extends EventEmitter {
       await new Promise((resolve) => setTimeout(resolve, 500))
     }
 
+  }
+
+  /**
+   * Promove o storage temporário da recuperação para o local definitivo.
+   * Só deve ser chamado DEPOIS que perfil/posts foram de fato recuperados da rede.
+   * Fecha o Corestore temporário (libera os handles do RocksDB — necessário para
+   * renomear no Windows), move a pasta e reabre o Corestore no local definitivo.
+   */
+  async _promoteRecoveryStorage() {
+    if (this.store) await this.store.close().catch(() => {})
+    fs.rmSync(this.storageDir, { recursive: true, force: true })
+    try {
+      fs.renameSync(this.recoveryStorageDir, this.storageDir)
+    } catch {
+      // Fallback (ex.: volume diferente ou bloqueio do SO): copia e remove.
+      fs.cpSync(this.recoveryStorageDir, this.storageDir, { recursive: true })
+      fs.rmSync(this.recoveryStorageDir, { recursive: true, force: true })
+    }
+    this.store = new Corestore(this.storageDir)
+    await this.store.ready()
   }
 
   async stop() {
@@ -426,6 +476,9 @@ class P2PNode extends EventEmitter {
     }
     if (this.swarm) await this.swarm.destroy().catch(() => {})
     if (this.store) await this.store.close().catch(() => {})
+    // Remove resíduo de uma recuperação abandonada (a pasta temporária nunca vira
+    // `corestore`; se a recuperação teve sucesso, ela já foi renomeada para lá).
+    fs.rmSync(this.recoveryStorageDir, { recursive: true, force: true })
       this.lifecycleState = 'stopped'
     })()
 

@@ -28,9 +28,21 @@
       </div>
 
       <div id="setup-recovery" class="setup-recovery" hidden>
-        <p id="setup-recovery-status" class="setup-status"></p>
-        <button id="setup-start-from-zero" type="button" class="btn btn--danger" data-i18n="startFromZero">começar do zero</button>
-        <button id="setup-cancel-recovery" type="button" class="btn btn--ghost" data-i18n="cancelAndClose">cancelar e fechar</button>
+        <div id="setup-recovery-anim" class="recovery-anim" aria-hidden="true">
+          <div class="recovery-anim__ring recovery-anim__ring--outer"></div>
+          <div class="recovery-anim__ring recovery-anim__ring--inner"></div>
+          <div class="recovery-anim__sweep"></div>
+          <div class="recovery-anim__core"></div>
+          <div class="recovery-anim__blip recovery-anim__blip--1" hidden></div>
+          <div class="recovery-anim__blip recovery-anim__blip--2" hidden></div>
+          <div class="recovery-anim__blip recovery-anim__blip--3" hidden></div>
+        </div>
+        <p id="setup-recovery-status" class="setup-status setup-status--phase"></p>
+        <p id="setup-recovery-meta" class="setup-status setup-status--meta" hidden></p>
+        <div class="setup-recovery__actions">
+          <button id="setup-start-from-zero" type="button" class="btn btn--danger" data-i18n="startFromZero">começar do zero</button>
+          <button id="setup-cancel-recovery" type="button" class="btn btn--ghost" data-i18n="cancelAndClose">cancelar e fechar</button>
+        </div>
       </div>
 
       <form id="setup-create-form" class="setup-create-form" hidden>

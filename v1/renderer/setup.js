@@ -13,9 +13,14 @@ const setupEls = {
   createForm: document.getElementById('setup-create-form'),
   recovery: document.getElementById('setup-recovery'),
   recoveryStatus: document.getElementById('setup-recovery-status'),
+  recoveryMeta: document.getElementById('setup-recovery-meta'),
+  recoveryAnim: document.getElementById('setup-recovery-anim'),
   startFromZero: document.getElementById('setup-start-from-zero'),
   cancelRecovery: document.getElementById('setup-cancel-recovery')
 }
+
+let recoveryMonitorTimer = null
+let recoveryPhase = 'searching'
 
 function setupError(message) {
   setupEls.error.textContent = message
@@ -34,25 +39,51 @@ function setBusy(busy) {
   setupEls.username.disabled = busy
 }
 
+function setRecoveryPhase(phase) {
+  recoveryPhase = phase === 'syncing' ? 'syncing' : 'searching'
+  setupEls.recoveryStatus.textContent = recoveryPhase === 'syncing'
+    ? window.coherenceI18n.text('seederFound')
+    : window.coherenceI18n.text('searchingSeeders')
+}
+
+function updateRecoveryBlips(peers) {
+  const blips = setupEls.recoveryAnim.querySelectorAll('.recovery-anim__blip')
+  blips.forEach((blip, i) => { blip.hidden = i >= Math.min(peers, 3) })
+}
+
+function updateRecoveryMeta(peers) {
+  setupEls.recoveryMeta.textContent = window.coherenceI18n.text('recoveryPeers').replace('{n}', String(peers))
+}
+
 function showRecovery(state) {
   window.__coherenceSetupActive = true
   setupEls.screen.hidden = false
   setupEls.actions.hidden = true
   setupEls.createForm.hidden = true
   setupEls.recovery.hidden = false
-  setupEls.recoveryStatus.textContent = state === 'expired'
-    ? window.coherenceI18n.text('recoveryExpired')
-    : window.coherenceI18n.text('recoveringIdentity')
+  setupEls.recoveryAnim.classList.add('recovery-anim--active')
+  setRecoveryPhase(state)
+  updateRecoveryBlips(0)
+  setupEls.recoveryMeta.hidden = false
+  updateRecoveryMeta(0)
+  startRecoveryMonitor()
 }
 
-function monitorRecovery() {
-  const timer = setInterval(async () => {
+function startRecoveryMonitor() {
+  if (recoveryMonitorTimer) return
+  recoveryMonitorTimer = setInterval(async () => {
     try {
       const state = await window.p2p.setup.getState()
       if (state === 'ready') {
-        clearInterval(timer)
+        clearInterval(recoveryMonitorTimer)
+        recoveryMonitorTimer = null
         window.location.reload()
+        return
       }
+      const info = await window.p2p.setup.getRecoveryStatus()
+      const peers = Math.max(info.peerCount || 0, info.corePeers || 0)
+      updateRecoveryMeta(peers)
+      updateRecoveryBlips(peers)
     } catch {
       // O processo principal pode estar encerrando após o cancelamento.
     }
@@ -68,12 +99,7 @@ async function bootSetup() {
   if (hasIdentity) {
     const result = await window.p2p.setup.startApp()
     if (result && result.state === 'recovery') {
-      showRecovery('waiting')
-      monitorRecovery()
-      return
-    }
-    if (result && result.state === 'recovery-expired') {
-      showRecovery('expired')
+      showRecovery('searching')
       return
     }
     setupEls.screen.hidden = true
@@ -89,7 +115,9 @@ window.p2p.on('recovery-updated', (result) => {
     window.location.reload()
     return
   }
-  if (result.state === 'expired') showRecovery('expired')
+  if (result.state === 'syncing') {
+    setRecoveryPhase('syncing')
+  }
 })
 
 setupEls.startFromZero.addEventListener('click', async () => {

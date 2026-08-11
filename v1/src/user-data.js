@@ -24,6 +24,26 @@ function userDataDir(dataRoot, publicKeyHex) {
   return path.join(dataRoot, publicKeyHex)
 }
 
+function recoveredMarkerFile(dataDir) {
+  return path.join(dataDir, 'recovered.json')
+}
+
+/**
+ * Um usuário só é considerado "estabelecido/recuperado" quando este marcador existe.
+ * Ele é gravado APENAS depois que a identidade importada foi de fato recuperada da
+ * rede (ou quando um usuário novo/normal é criado). Sem o marcador, uma pasta
+ * `corestore` órfã (ex.: de uma recuperação interrompida/cancelada) NUNCA pode ser
+ * promovida a "usuário" — a aplicação volta para o fluxo de recuperação.
+ */
+function isRecovered(dataDir) {
+  return fs.existsSync(recoveredMarkerFile(dataDir))
+}
+
+function writeRecoveredMarker(dataDir) {
+  fs.mkdirSync(dataDir, { recursive: true })
+  fs.writeFileSync(recoveredMarkerFile(dataDir), JSON.stringify({ recoveredAt: Date.now() }, null, 2))
+}
+
 function listUserKeys(dataRoot) {
   if (!fs.existsSync(dataRoot)) return []
   return fs.readdirSync(dataRoot, { withFileTypes: true })
@@ -45,6 +65,9 @@ module.exports = {
   publicKeyHexFromIdentity,
   readIdentity,
   userDataDir,
+  recoveredMarkerFile,
+  isRecovered,
+  writeRecoveredMarker,
   listUserKeys,
   parseUserKeyArg
 }
