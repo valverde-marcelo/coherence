@@ -21,6 +21,7 @@ const setupEls = {
 
 let recoveryMonitorTimer = null
 let recoveryPhase = 'searching'
+let recoveryStalled = false
 
 function setupError(message) {
   setupEls.error.textContent = message
@@ -40,10 +41,16 @@ function setBusy(busy) {
 }
 
 function setRecoveryPhase(phase) {
-  recoveryPhase = phase === 'syncing' ? 'syncing' : 'searching'
+  recoveryPhase = phase === 'syncing' ? 'syncing' : phase === 'stalled' ? 'stalled' : 'searching'
+  if (recoveryPhase === 'stalled') recoveryStalled = true
+  // Depois de avisar que o seeder está incompleto, não deixa os eventos
+  // 'syncing' subsequentes (o loop continua tentando) sobrescreverem o aviso.
+  if (recoveryPhase === 'syncing' && recoveryStalled) return
   setupEls.recoveryStatus.textContent = recoveryPhase === 'syncing'
     ? window.coherenceI18n.text('seederFound')
-    : window.coherenceI18n.text('searchingSeeders')
+    : recoveryPhase === 'stalled'
+      ? window.coherenceI18n.text('seederIncomplete')
+      : window.coherenceI18n.text('searchingSeeders')
 }
 
 function updateRecoveryBlips(peers) {
@@ -113,6 +120,16 @@ async function bootSetup() {
 window.p2p.on('recovery-updated', (result) => {
   if (result.state === 'recovered') {
     window.location.reload()
+    return
+  }
+  if (result.state === 'waiting') {
+    // Voltou a procurar seeders (dados sumiram da rede): limpa o aviso anterior.
+    recoveryStalled = false
+    setRecoveryPhase('searching')
+    return
+  }
+  if (result.state === 'stalled') {
+    setRecoveryPhase('stalled')
     return
   }
   if (result.state === 'syncing') {

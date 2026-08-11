@@ -374,10 +374,22 @@ class P2PNode extends EventEmitter {
   }
 
   async _recoverFromNetwork(keyPair, coreKey) {
+    let lastDownloadedCount = -1
+    let stallStreak = 0
+    let stalledNotified = false
+
     while (this.lifecycleState === 'recovery' && !this.recoveryCancelled) {
       try {
         await withTimeout(this.myCore.update({ wait: true }), 3000, null)
         if (this.myCore.length === 0) {
+          // Nenhum seeder com dados no momento — volta para a fase de busca.
+          lastDownloadedCount = -1
+          stallStreak = 0
+          stalledNotified = false
+          if (this.recoveryState !== 'waiting') {
+            this.recoveryState = 'waiting'
+            this.emit('recovery-updated', { state: this.recoveryState, timeoutMs: this.recoveryTimeoutMs })
+          }
           await new Promise((resolve) => setTimeout(resolve, 500))
           continue
         }
@@ -392,7 +404,38 @@ class P2PNode extends EventEmitter {
         const downloaded = await withTimeout(download.done().then(() => true), 15000, false)
         if (this.recoveryDownload === download) this.recoveryDownload = null
         if (this.recoveryCancelled) return
+
         if (!downloaded) {
+          // O download não terminou no tempo. Conta quantos blocos realmente
+          // chegaram para distinguir "ainda baixando" de "seeder incompleto":
+          // um seeder parcial anuncia o tamanho do core, envia os blocos que
+          // tem e deixa o resto pendurado para sempre.
+          const len = this.myCore.length
+          let have = 0
+          if (len > 0) {
+            for (let i = 0; i < len; i++) {
+              if (await this.myCore.has(i)) have++
+            }
+          }
+
+          if (have < len) {
+            if (have > lastDownloadedCount) {
+              // Há progresso — algum peer está enviando blocos.
+              lastDownloadedCount = have
+              stallStreak = 0
+              stalledNotified = false
+            } else {
+              // Nenhum progresso desde a tentativa anterior: os seeders na rede
+              // têm cópias INCOMPLETAS e não conseguem enviar o que falta.
+              stallStreak++
+              if (stallStreak >= 3 && !stalledNotified) {
+                stalledNotified = true
+                this.recoveryState = 'stalled'
+                this.emit('recovery-updated', { state: this.recoveryState, downloaded: have, length: len })
+              }
+            }
+          }
+
           await new Promise((resolve) => setTimeout(resolve, 500))
           continue
         }
@@ -596,16 +639,63 @@ class P2PNode extends EventEmitter {
 
   async _waitForFollowedProfile(entry) {
     const deadline = Date.now() + Math.max(this.readTimeoutMs, 10000)
+    let profile = null
     while (Date.now() < deadline && this.lifecycleState !== 'stopping' && this.lifecycleState !== 'stopped') {
-      const profile = await withTimeout(entry.bee.get('profile'), 1000, null)
-      if (profile) return profile
+      profile = await withTimeout(entry.bee.get('profile'), 1000, null)
+      if (profile) break
       await withTimeout(entry.core.update({ wait: true }), 1000, null)
       if (entry.core.length > 0) {
         const download = entry.core.download({ start: 0, end: entry.core.length })
         await withTimeout(download.done().then(() => true), 5000, false)
       }
     }
-    return null
+
+    // Importante: mesmo com o perfil já lido, garantir que TODOS os blocos do
+    // core seguido estejam em disco. Sem isso, este peer vira um "seeder
+    // incompleto": anuncia o tamanho do core, serve apenas os blocos que baixou
+    // e trava a recuperação de identidade do dono (que fica esperando blocos
+    // que ninguém na rede tem).
+    if (profile) await this._ensureFullDownload(entry)
+
+    return profile
+  }
+
+  /**
+   * Baixa (best-effort) todos os blocos do core de um peer seguido, para que
+   * este nó sirva como seeder COMPLETO quando o dono estiver offline.
+   * Sem isso, um seguidor pode terminar com uma cópia parcial (ex.: só as
+   * entradas que a UI leu) e não conseguir atender uma recuperação de identidade.
+   */
+  async _ensureFullDownload(entry, timeoutMs = Math.max(this.readTimeoutMs, 15000)) {
+    const { core } = entry
+    if (this.lifecycleState === 'stopping' || this.lifecycleState === 'stopped') return false
+
+    // Se a cópia local já está completa, não precisa esperar a rede.
+    const localLen = core.length
+    if (localLen > 0) {
+      let complete = true
+      for (let i = 0; i < localLen; i++) {
+        if (!(await core.has(i))) { complete = false; break }
+      }
+      if (complete) return true
+    }
+
+    // Cópia local incompleta (ou tamanho ainda desconhecido): descobre o tamanho
+    // real pela rede e baixa os blocos faltantes, tentando até o limite de tempo.
+    const deadline = Date.now() + timeoutMs
+    while (Date.now() < deadline && this.lifecycleState !== 'stopping' && this.lifecycleState !== 'stopped') {
+      await withTimeout(core.update({ wait: true }), 1500, null)
+      const len = core.length
+      if (len > 0) {
+        const download = core.download({ start: 0, end: len })
+        const remaining = deadline - Date.now()
+        if (remaining <= 0) break
+        const ok = await withTimeout(download.done().then(() => true), Math.min(5000, remaining), false)
+        if (ok) return true
+      }
+      await new Promise((resolve) => setTimeout(resolve, 300))
+    }
+    return false
   }
 
   /**
@@ -682,6 +772,11 @@ class P2PNode extends EventEmitter {
       if (pubKeyHex === this.myPublicKeyHex) throw new Error('Você não pode seguir a si mesmo.')
 
       await this._openFollowed(pubKeyHex)
+
+      // Garante que a cópia local do core seguido fique COMPLETA (todos os blocos),
+      // para que este nó possa servir como seeder completo numa futura recuperação.
+      const followedEntry = this.followed.get(pubKeyHex)
+      if (followedEntry) await this._ensureFullDownload(followedEntry)
 
       const current = await this.myBee.get('profile')
       const value = (current && current.value) || { followList: [] }
