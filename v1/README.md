@@ -63,6 +63,14 @@ Quando houver mais de uma conta local, informe a chave pública da conta que ser
 npm start -- --user-key <chave-publica-hexadecimal>
 ```
 
+Para abrir **todas** as contas locais encontradas em `coherence-data` de uma vez (uma janela por usuário), use:
+
+```bash
+npm run start-all
+```
+
+Esse comando detecta as pastas de cada identidade em `coherence-data` e inicia uma instância Electron para cada uma, com `--user-key` preenchido automaticamente.
+
 Para abrir o fluxo de criação de uma nova conta mesmo quando já existem contas locais, use `--new-user`:
 
 ```bash

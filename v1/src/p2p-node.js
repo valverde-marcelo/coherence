@@ -173,134 +173,7 @@ class P2PNode extends EventEmitter {
     const storeDir = recovery ? this._prepareRecoveryStorage() : this.storageDir
     this.store = new Corestore(storeDir)
     this.swarm = new Hyperswarm(this.swarmOpts)
-
-    // Toda conexão P2P recebida ou iniciada replica, de forma segura,
-    // qualquer core que este processo já tenha carregado (o próprio +
-    // os dos perfis seguidos). Ver nota de privacidade no README: um
-    // peer só consegue pedir dados de um core se já souber a chave dele.
-    
-    this.swarm.on('connection', (socket) => {
-      const socketKey = socket.remotePublicKey?.toString('hex')
-      const connectedAt = Date.now()
-      
-      // Hand-shake para trocar identidades
-      // { type: 'handshake', identityKey: 'ABC...' }
-      //
-      // APÓS o handshake, peer pode enviar:
-      // { type: 'follow-request', identityKey: 'ABC...' }  ← pedindo para ser registrado como seguidor
-      //
-      // Apenas registra como seguidor se receber follow-request explícito
-      
-      let handshakeDone = false
-      let peerIdentityKey = null
-      
-      const handshakeMessage = JSON.stringify({
-        type: 'handshake',
-        identityKey: this.myPublicKeyHex
-      })
-      
-      const processHandshake = (chunk) => {
-        if (handshakeDone) return false
-        
-        const str = chunk.toString('utf8')
-        const newlineIdx = str.indexOf('\n')
-        if (newlineIdx === -1) return false
-        
-        const firstLine = str.substring(0, newlineIdx).trim()
-        try {
-          if (firstLine.startsWith('{')) {
-            const msg = JSON.parse(firstLine)
-            if (msg.type === 'handshake' && msg.identityKey && msg.identityKey.length === 64) {
-              handshakeDone = true
-              peerIdentityKey = msg.identityKey
-              this.peerIdentityMap.set(socketKey, peerIdentityKey)
-              
-              console.log('[swarm:connection:handshake] ✓ Peer:', peerIdentityKey.slice(0, 16))
-              
-              return true
-            }
-          }
-        } catch (e) {
-          console.log('[swarm:connection:handshake] ⚠️ Parse error:', e.message)
-        }
-        return false
-      }
-
-      const processFollowRequest = (chunk) => {
-        const str = chunk.toString('utf8')
-        const newlineIdx = str.indexOf('\n')
-        if (newlineIdx === -1) return false
-        
-        const firstLine = str.substring(0, newlineIdx).trim()
-        try {
-          if (firstLine.startsWith('{')) {
-            const msg = JSON.parse(firstLine)
-            if (msg.type === 'follow-request' && msg.identityKey && msg.identityKey.length === 64) {
-              console.log('[swarm:connection:follow-request] ✓ Recebi follow-request de:', msg.identityKey.slice(0, 16))
-              if (this.lifecycleState === 'ready') {
-                this._recordFollower(msg.identityKey).catch((err) => {
-                  console.error('[_recordFollower] Erro:', err.message)
-                })
-              }
-              return true
-            }
-          }
-        } catch (e) {
-          // Ignorar erros de parse
-        }
-        return false
-      }
-      
-      const handleData = (chunk) => {
-        if (!handshakeDone) {
-          if (processHandshake(chunk)) {
-            socket.removeListener('data', handleData)
-            
-            // Iniciar replicação após handshake bem-sucedido
-            if (this.store) this.store.replicate(socket)
-            
-            // Aguardar follow-request por até 3 segundos
-            const followRequestTimeout = setTimeout(() => {
-              socket.removeListener('data', handleFollowRequest)
-              console.log('[swarm:connection:follow-request] ⚠️ Timeout, nenhum follow-request recebido de:', peerIdentityKey.slice(0, 16))
-            }, 3000)
-            
-            // Continuar ouvindo por follow-request
-            const handleFollowRequest = (chunk) => {
-              if (processFollowRequest(chunk)) {
-                clearTimeout(followRequestTimeout)
-                socket.removeListener('data', handleFollowRequest)
-              }
-            }
-            socket.on('data', handleFollowRequest)
-            
-            this.emit('peers-changed')
-          }
-        }
-      }
-      
-      // Registrar listener ANTES de enviar (evita race condition)
-      socket.on('data', handleData)
-      
-      // Enviar handshake
-      socket.write(handshakeMessage + '\n')
-      
-      // Timeout se não receber handshake
-      const handshakeTimeout = setTimeout(() => {
-        if (!handshakeDone) {
-          console.log('[swarm:connection:handshake] ⚠️ Timeout, continuando sem handshake')
-          socket.removeListener('data', handleData)
-          handshakeDone = true
-          if (this.store) this.store.replicate(socket)
-          this.emit('peers-changed')
-        }
-      }, 1000)
-      
-      socket.on('close', () => {
-        clearTimeout(handshakeTimeout)
-      })
-    })
-    this.swarm.on('error', (err) => this.emit('error', err))
+    this._setupSwarmHandlers()
 
     if (recovery) {
       this.recoveryCancelled = false
@@ -364,6 +237,155 @@ class P2PNode extends EventEmitter {
     this.ready = true
     this.lifecycleState = 'ready'
     this.emit('ready', { publicKeyHex: this.myPublicKeyHex })
+  }
+
+  /**
+   * Registra os handlers de conexão do swarm. É um método separado porque o
+   * swarm precisa ser RECRIADO durante a promoção do storage de recuperação
+   * (ver _promoteRecoveryStorage) — e o novo swarm precisa dos mesmos handlers.
+   */
+  _setupSwarmHandlers() {
+    // Toda conexão P2P recebida ou iniciada replica, de forma segura,
+    // qualquer core que este processo já tenha carregado (o próprio +
+    // os dos perfis seguidos). Ver nota de privacidade no README: um
+    // peer só consegue pedir dados de um core se já souber a chave dele.
+
+    this.swarm.on('connection', (socket) => {
+      const socketKey = socket.remotePublicKey?.toString('hex')
+      const connectedAt = Date.now()
+
+      // Hand-shake para trocar identidades
+      // { type: 'handshake', identityKey: 'ABC...' }
+      //
+      // APÓS o handshake, peer pode enviar:
+      // { type: 'follow-request', identityKey: 'ABC...' }  ← pedindo para ser registrado como seguidor
+      //
+      // Apenas registra como seguidor se receber follow-request explícito
+
+      let handshakeDone = false
+      let peerIdentityKey = null
+
+      const handshakeMessage = JSON.stringify({
+        type: 'handshake',
+        identityKey: this.myPublicKeyHex
+      })
+
+      const processHandshake = (chunk) => {
+        if (handshakeDone) return false
+
+        const str = chunk.toString('utf8')
+        const newlineIdx = str.indexOf('\n')
+        if (newlineIdx === -1) return false
+
+        const firstLine = str.substring(0, newlineIdx).trim()
+        try {
+          if (firstLine.startsWith('{')) {
+            const msg = JSON.parse(firstLine)
+            if (msg.type === 'handshake' && msg.identityKey && msg.identityKey.length === 64) {
+              handshakeDone = true
+              peerIdentityKey = msg.identityKey
+              this.peerIdentityMap.set(socketKey, peerIdentityKey)
+
+              console.log('[swarm:connection:handshake] ✓ Peer:', peerIdentityKey.slice(0, 16))
+
+              return true
+            }
+          }
+        } catch (e) {
+          console.log('[swarm:connection:handshake] ⚠️ Parse error:', e.message)
+        }
+        return false
+      }
+
+      const processFollowRequest = (chunk) => {
+        const str = chunk.toString('utf8')
+        const newlineIdx = str.indexOf('\n')
+        if (newlineIdx === -1) return false
+
+        const firstLine = str.substring(0, newlineIdx).trim()
+        try {
+          if (firstLine.startsWith('{')) {
+            const msg = JSON.parse(firstLine)
+            if (msg.type === 'follow-request' && msg.identityKey && msg.identityKey.length === 64) {
+              console.log('[swarm:connection:follow-request] ✓ Recebi follow-request de:', msg.identityKey.slice(0, 16))
+              if (this.lifecycleState === 'ready') {
+                this._recordFollower(msg.identityKey).catch((err) => {
+                  console.error('[_recordFollower] Erro:', err.message)
+                })
+              }
+              return true
+            }
+          }
+        } catch (e) {
+          // Ignorar erros de parse
+        }
+        return false
+      }
+
+      const handleData = (chunk) => {
+        if (!handshakeDone) {
+          if (processHandshake(chunk)) {
+            socket.removeListener('data', handleData)
+
+            // Iniciar replicação após handshake bem-sucedido
+            this._safeReplicate(socket)
+
+            // Aguardar follow-request por até 3 segundos
+            const followRequestTimeout = setTimeout(() => {
+              socket.removeListener('data', handleFollowRequest)
+              console.log('[swarm:connection:follow-request] ⚠️ Timeout, nenhum follow-request recebido de:', peerIdentityKey.slice(0, 16))
+            }, 3000)
+
+            // Continuar ouvindo por follow-request
+            const handleFollowRequest = (chunk) => {
+              if (processFollowRequest(chunk)) {
+                clearTimeout(followRequestTimeout)
+                socket.removeListener('data', handleFollowRequest)
+              }
+            }
+            socket.on('data', handleFollowRequest)
+
+            this.emit('peers-changed')
+          }
+        }
+      }
+
+      // Registrar listener ANTES de enviar (evita race condition)
+      socket.on('data', handleData)
+
+      // Enviar handshake
+      socket.write(handshakeMessage + '\n')
+
+      // Timeout se não receber handshake
+      const handshakeTimeout = setTimeout(() => {
+        if (!handshakeDone) {
+          console.log('[swarm:connection:handshake] ⚠️ Timeout, continuando sem handshake')
+          socket.removeListener('data', handleData)
+          handshakeDone = true
+          this._safeReplicate(socket)
+          this.emit('peers-changed')
+        }
+      }, 1000)
+
+      socket.on('close', () => {
+        clearTimeout(handshakeTimeout)
+      })
+    })
+    this.swarm.on('error', (err) => this.emit('error', err))
+  }
+
+  /**
+   * Inicia a replicação do Corestore em um socket, tolerando o store em transição
+   * (fechado/reaberto durante a promoção do storage de recuperação). Nesse caso a
+   * conexão é reestabelecida pelo novo swarm; aqui apenas evitamos que o erro
+   * estoure dentro do handler de 'data'.
+   */
+  _safeReplicate(socket) {
+    try {
+      if (this.store && !socket.destroyed) this.store.replicate(socket)
+    } catch (err) {
+      console.log('[swarm:connection] ⚠️ Replicação não iniciada (store em transição):', err.message)
+    }
   }
 
   /** Prepara (e limpa) o storage temporário usado durante a recuperação da identidade. */
@@ -485,8 +507,30 @@ class P2PNode extends EventEmitter {
    * Só deve ser chamado DEPOIS que perfil/posts foram de fato recuperados da rede.
    * Fecha o Corestore temporário (libera os handles do RocksDB — necessário para
    * renomear no Windows), move a pasta e reabre o Corestore no local definitivo.
+   *
+   * IMPORTANTE: o swarm também é recriado aqui. As conexões existentes carregam
+   * streams de replicação ligadas ao store ANTIGO (que será fechado); se ficarem
+   * vivas, o Hyperswarm mantém a deduplicação por chave pública (uma conexão por
+   * peer) e os cores seguidos abertos depois da promoção nunca ganham um peer de
+   * replicação — o feed fica sem posts remotos e a lista de seguidos presa em
+   * "sincronizando". Ao recriar o swarm com os handlers re-registrados, novas
+   * conexões replicam o store promovido (que já contém os cores seguidos).
    */
   async _promoteRecoveryStorage() {
+    // Teardown suave do swarm ANTES de fechar o store: destrói as conexões,
+    // as descobertas e o server DHT, mas PRESERVA o DHT (que pode ser externo,
+    // ex.: um nó de testnet nos testes). O destroy() completo do swarm mataria
+    // o DHT e o novo swarm ficaria sem rede.
+    if (this.swarm) {
+      for (const conn of [...this.swarm.connections]) {
+        try { conn.destroy() } catch { /* ignora */ }
+      }
+      await this.swarm.clear().catch(() => {})
+      await this.swarm.server.close().catch(() => {})
+    }
+    const dht = this.swarm ? this.swarm.dht : null
+    const keyPair = this.swarm ? this.swarm.keyPair : null
+
     if (this.store) await this.store.close().catch(() => {})
     fs.rmSync(this.storageDir, { recursive: true, force: true })
     try {
@@ -498,6 +542,16 @@ class P2PNode extends EventEmitter {
     }
     this.store = new Corestore(this.storageDir)
     await this.store.ready()
+
+    // Recria o swarm reutilizando o mesmo DHT e keyPair, e re-registra os
+    // handlers. O novo swarm nasce com _allConnections vazio, então novas
+    // conexões são abertas e replicam o store promovido.
+    this.swarm = new Hyperswarm({
+      ...this.swarmOpts,
+      ...(dht ? { dht } : {}),
+      ...(keyPair ? { keyPair } : {})
+    })
+    this._setupSwarmHandlers()
   }
 
   async stop() {
@@ -717,7 +771,17 @@ class P2PNode extends EventEmitter {
     const discovery = await this._joinTopic(core)
 
     core.on('append', () => this.emit('feed-updated'))
-    core.on('peer-add', () => this.emit('peers-changed'))
+    // Reenvia o follow-request a cada novo peer conectado ao core seguido: o envio
+    // inicial pode pegar apenas uma parte dos peers (a descoberta é incremental),
+    // e quem conecta depois ficaria sem saber que este usuário o segue.
+    core.on('peer-add', () => {
+      this.emit('peers-changed')
+      if (!isFollower) {
+        this._sendFollowRequestsToPeers(pubKeyHex, entry).catch((err) => {
+          console.log('[_openFollowed] Falha ao reenviar follow-request:', err.message)
+        })
+      }
+    })
     core.on('peer-remove', () => this.emit('peers-changed'))
 
     const entry = { core, bee, discovery }
@@ -728,21 +792,25 @@ class P2PNode extends EventEmitter {
   
   /** Enviar follow-request para peers conectados (recursivo, tenta novamente se não encontrar peers) */
   async _sendFollowRequestsToPeers(pubKeyHex, entry, attempts = 0) {
-    if (attempts > 5) {
-      console.log('[_sendFollowRequestsToPeers] Limite de tentativas atingido para:', pubKeyHex.slice(0, 16))
-      return
-    }
-    
     const { core } = entry
     const peers = core.peers || []
-    
+
     if (peers.length === 0) {
-      // Nenhum peer conectado ainda, aguardar um pouco e tentar novamente
+      // Nenhum peer conectado ainda — continua tentando com backoff enquanto o
+      // nó estiver vivo. Desistir cedo (antes: 6 tentativas × 500ms = 3s) faz o
+      // follow-request nunca chegar quando a descoberta DHT demora mais que isso,
+      // e o dono do perfil seguido nunca registra este usuário como seguidor.
+      if (
+        this.lifecycleState === 'stopping' ||
+        this.lifecycleState === 'stopped' ||
+        core.closed
+      ) return
+      const delay = Math.min(500 * (attempts + 1), 5000)
       console.log('[_sendFollowRequestsToPeers] Aguardando peers para:', pubKeyHex.slice(0, 16), '(tentativa', attempts + 1, ')')
-      await new Promise(resolve => setTimeout(resolve, 500))
+      await new Promise(resolve => setTimeout(resolve, delay))
       return this._sendFollowRequestsToPeers(pubKeyHex, entry, attempts + 1)
     }
-    
+
     // Enviar para cada peer conectado
     const followRequest = JSON.stringify({
       type: 'follow-request',
@@ -759,7 +827,7 @@ class P2PNode extends EventEmitter {
         }
       }
     }
-    
+
     if (sent > 0) {
       console.log('[_sendFollowRequestsToPeers] ✓ Enviado follow-request para', sent, 'peer(s) em:', pubKeyHex.slice(0, 16))
     }
