@@ -11,6 +11,7 @@ const {
   userDataDir,
   listUserKeys,
   parseUserKeyArg,
+  identityMatchesKey,
   isRecovered
 } = require('./src/user-data')
 
@@ -90,7 +91,7 @@ function resolveDataDir() {
   } else if (requestedKey) {
     dataDir = userDataDir(dataRoot, requestedKey)
     const identity = readIdentity(path.join(dataDir, 'identity.json'))
-    if (identity && publicKeyHexFromIdentity(identity) !== requestedKey) {
+    if (identity && !identityMatchesKey(identity, requestedKey)) {
       throw new Error('A identidade encontrada não corresponde à chave informada em --user-key.')
     }
   } else if (keys.length === 1) {

@@ -4,12 +4,40 @@ const fs = require('node:fs')
 const path = require('node:path')
 const crypto = require('node:crypto')
 
+function identityKeyHexFromIdentity(identity) {
+  const publicKey = crypto.createPublicKey(identity.publicKey)
+  return publicKey.export({ type: 'spki', format: 'der' }).subarray(-32).toString('hex')
+}
+
+/**
+ * Chave pública canônica do usuário: o coreKey (chave do Hypercore, que é a
+ * chave compartilhável/replicada — igual a `myPublicKeyHex`) quando presente;
+ * antes do core existir (usuário novo / importação sem coreKey), cai para a
+ * chave de identidade (Ed25519), que é o que nomeia a pasta na criação.
+ */
 function publicKeyHexFromIdentity(identity) {
   if (typeof identity.coreKey === 'string' && /^[0-9a-f]{64}$/i.test(identity.coreKey)) {
     return identity.coreKey.toLowerCase()
   }
-  const publicKey = crypto.createPublicKey(identity.publicKey)
-  return publicKey.export({ type: 'spki', format: 'der' }).subarray(-32).toString('hex')
+  return identityKeyHexFromIdentity(identity)
+}
+
+/**
+ * Verifica se uma identidade corresponde a uma chave passada em --user-key.
+ * A pasta de um usuário pode ter sido nomeada de duas formas legítimas:
+ *   1. pela chave de identidade (Ed25519) — usuário criado localmente, ou
+ *      importado antes do coreKey existir no arquivo;
+ *   2. pelo coreKey — identidade importada cujo arquivo já trazia coreKey.
+ * Aceita qualquer um dos dois, para não rejeitar pastas existentes.
+ */
+function identityMatchesKey(identity, requestedKey) {
+  if (!identity) return false
+  if (publicKeyHexFromIdentity(identity) === requestedKey) return true
+  try {
+    return identityKeyHexFromIdentity(identity) === requestedKey
+  } catch {
+    return false
+  }
 }
 
 function readIdentity(identityFile) {
@@ -63,6 +91,8 @@ function parseUserKeyArg(argv = process.argv, env = process.env) {
 
 module.exports = {
   publicKeyHexFromIdentity,
+  identityKeyHexFromIdentity,
+  identityMatchesKey,
   readIdentity,
   userDataDir,
   recoveredMarkerFile,

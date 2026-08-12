@@ -69,7 +69,9 @@ Para abrir **todas** as contas locais encontradas em `coherence-data` de uma vez
 npm run start-all
 ```
 
-Esse comando detecta as pastas de cada identidade em `coherence-data` e inicia uma instância Electron para cada uma, com `--user-key` preenchido automaticamente.
+Esse comando detecta as pastas de cada identidade em `coherence-data` e inicia uma instância Electron para cada uma, com `--user-key` preenchido automaticamente. Ele fica de "observação" por ~20s: se alguma instância quebrar ao abrir (ex.: erro de identidade), o motivo é mostrado no terminal e o log completo fica em `%TEMP%\coherence-start-all\<chave>.log`. Depois disso o script encerra e as janelas continuam abertas.
+
+> ⚠️ Cada identidade usa um `corestore` com lock exclusivo: a mesma conta não pode ser aberta em duas instâncias ao mesmo tempo. Se uma janela já estiver aberta para uma conta, rodar `start-all` novamente fará a nova instância dessa conta falhar com "File descriptor could not be locked" (o log explica).
 
 Para abrir o fluxo de criação de uma nova conta mesmo quando já existem contas locais, use `--new-user`:
 

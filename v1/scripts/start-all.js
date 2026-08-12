@@ -60,26 +60,75 @@ function main() {
   // caminho do binário do Electron.
   const electronPath = require('electron')
   const projectRoot = path.join(__dirname, '..')
+  const logDir = path.join(os.tmpdir(), 'coherence-start-all')
+  fs.mkdirSync(logDir, { recursive: true })
 
   console.log(`🚀 Iniciando ${instances.length} instância(s):`)
-  for (const { dataRoot, key } of instances) {
+  const children = instances.map(({ dataRoot, key }) => {
     const label = key ? `${key.slice(0, 12)}…${key.slice(-8)}` : '(conta legada única)'
     const args = key ? ['.', '--user-key', key] : ['.']
     console.log(`   • ${label}  [${dataRoot}]`)
+
+    const logFile = path.join(logDir, `${key || 'legacy'}.log`)
     const child = spawn(electronPath, args, {
       cwd: projectRoot,
       detached: true,
-      stdio: 'inherit'
+      stdio: ['ignore', 'pipe', 'pipe']
     })
+    let log = ''
+    child.stdout.on('data', (d) => { log += d })
+    child.stderr.on('data', (d) => { log += d })
     child.on('error', (err) => {
       console.error(`❌ Falha ao iniciar instância ${label}:`, err.message)
     })
-    // Desvincula o processo filho: ele continua rodando mesmo depois que o
-    // script (e o terminal) fecharem.
-    child.unref()
+    return { child, label, logFile, getLog: () => log, startedAt: Date.now() }
+  })
+
+  // Watchdog: por alguns segundos, detecta instâncias que quebram logo ao abrir
+  // (ex.: erro de identidade) e mostra o log — assim o usuário vê o motivo em
+  // vez de uma falha silenciosa. Depois do período, o script encerra e as
+  // instâncias sobrevivem (detached + unref).
+  const WATCHDOG_MS = 20000
+  const watchdog = setTimeout(finish, WATCHDOG_MS)
+  let remaining = children.length
+
+  for (const entry of children) {
+    entry.child.on('exit', (code, signal) => {
+      writeLog(entry)
+      const quickExit = Date.now() - entry.startedAt < WATCHDOG_MS
+      if (quickExit && code !== 0) {
+        console.error(`⚠️ Instância ${entry.label} encerrou precocemente (exit ${code ?? 'signal ' + signal}).`)
+        console.error(`   Log completo: ${entry.logFile}`)
+      } else if (quickExit) {
+        console.log(`ℹ️ Instância ${entry.label} encerrou. Log: ${entry.logFile}`)
+      }
+      remaining -= 1
+      if (remaining === 0) finish()
+    })
   }
 
-  console.log('✅ Instâncias lançadas. As janelas do Electron abrirão em instantes.')
+  function writeLog(entry) {
+    const content = entry.getLog()
+    if (!content) return
+    try {
+      fs.writeFileSync(entry.logFile, content)
+    } catch (err) {
+      console.error(`⚠️ Não foi possível gravar o log de ${entry.label}:`, err.message)
+    }
+  }
+
+  function finish() {
+    clearTimeout(watchdog)
+    console.log('✅ Instâncias lançadas. As janelas abrirão em instantes.')
+    console.log(`   Logs de cada instância: ${logDir}`)
+    for (const entry of children) {
+      writeLog(entry)
+      // Desvincula processo e pipes: o pai pode sair e as instâncias continuam.
+      entry.child.unref()
+      entry.child.stdout?.unref()
+      entry.child.stderr?.unref()
+    }
+  }
 }
 
 main()
