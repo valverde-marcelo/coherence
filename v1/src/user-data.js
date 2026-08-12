@@ -52,6 +52,41 @@ function userDataDir(dataRoot, publicKeyHex) {
   return path.join(dataRoot, publicKeyHex)
 }
 
+/**
+ * Migra um usuário legado (identity.json + corestore na RAÍZ do dataRoot,
+ * layout da versão pré multi-usuário) para uma pasta própria, nomeada pela
+ * chave pública canônica.
+ *
+ * Regras:
+ *  - Só move os arquivos legados da raiz (identity.json, corestore, settings
+ *    etc.). NUNCA move pastas de outros usuários locais (pastas com nome de
+ *    chave hex de 64 caracteres) — senão elas seriam "engolidas" e os demais
+ *    usuários sumiriam da listagem.
+ *  - Se o usuário legado tem corestore local íntegro, grava o marcador
+ *    `recovered.json`. Sem ele, o app trataria a conta como importação
+ *    pendente e entraria em "recuperação", ignorando os dados locais e
+ *    ficando eternamente em "buscando seeders na rede".
+ */
+function migrateLegacyData(dataRoot) {
+  const legacyIdentityFile = path.join(dataRoot, 'identity.json')
+  const identity = readIdentity(legacyIdentityFile)
+  if (!identity) return false
+  const targetDir = userDataDir(dataRoot, publicKeyHexFromIdentity(identity))
+  fs.mkdirSync(targetDir, { recursive: true })
+  for (const entry of fs.readdirSync(dataRoot, { withFileTypes: true })) {
+    if (entry.name === path.basename(targetDir)) continue
+    // Nunca move pastas de outros usuários locais.
+    if (entry.isDirectory() && /^[0-9a-f]{64}$/i.test(entry.name)) continue
+    fs.renameSync(path.join(dataRoot, entry.name), path.join(targetDir, entry.name))
+  }
+  // O layout legado só existia para usuários ESTABELECIDOS (o app antigo não
+  // tinha importação pendente). Com corestore local, marca como recuperado.
+  if (fs.existsSync(path.join(targetDir, 'corestore'))) {
+    writeRecoveredMarker(targetDir)
+  }
+  return true
+}
+
 function recoveredMarkerFile(dataDir) {
   return path.join(dataDir, 'recovered.json')
 }
@@ -70,6 +105,20 @@ function isRecovered(dataDir) {
 function writeRecoveredMarker(dataDir) {
   fs.mkdirSync(dataDir, { recursive: true })
   fs.writeFileSync(recoveredMarkerFile(dataDir), JSON.stringify({ recoveredAt: Date.now() }, null, 2))
+}
+
+/**
+ * Um usuário é "estabelecido" quando pode iniciar com os dados locais, sem
+ * precisar de recuperação pela rede: tem o marcador recovered.json OU um
+ * corestore local íntegro.
+ *
+ * Importações pendentes/canceladas NUNCA criam a pasta `corestore` (durante a
+ * recuperação o storage fica em `corestore.recovery`, removido ao cancelar).
+ * Portanto, a presença do `corestore` é sinal confiável de dados estabelecidos
+ * — mesmo que o marcador tenha se perdido (ex.: conflito de sync/OneDrive).
+ */
+function isEstablished(dataDir) {
+  return isRecovered(dataDir) || fs.existsSync(path.join(dataDir, 'corestore'))
 }
 
 function listUserKeys(dataRoot) {
@@ -95,9 +144,11 @@ module.exports = {
   identityMatchesKey,
   readIdentity,
   userDataDir,
+  migrateLegacyData,
   recoveredMarkerFile,
   isRecovered,
   writeRecoveredMarker,
+  isEstablished,
   listUserKeys,
   parseUserKeyArg
 }

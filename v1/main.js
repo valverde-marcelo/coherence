@@ -12,7 +12,8 @@ const {
   listUserKeys,
   parseUserKeyArg,
   identityMatchesKey,
-  isRecovered
+  migrateLegacyData,
+  isEstablished
 } = require('./src/user-data')
 
 let mainWindow = null
@@ -61,19 +62,6 @@ function setDataDirFromIdentity(identity) {
   return dataDir
 }
 
-function migrateLegacyData() {
-  const legacyIdentityFile = path.join(dataRoot, 'identity.json')
-  const identity = readIdentity(legacyIdentityFile)
-  if (!identity) return false
-  const targetDir = userDataDir(dataRoot, publicKeyHexFromIdentity(identity))
-  fs.mkdirSync(targetDir, { recursive: true })
-  for (const entry of fs.readdirSync(dataRoot, { withFileTypes: true })) {
-    if (entry.name === path.basename(targetDir)) continue
-    fs.renameSync(path.join(dataRoot, entry.name), path.join(targetDir, entry.name))
-  }
-  return true
-}
-
 function isNewUserRequested() {
   return process.argv.includes('--new-user') ||
     app.commandLine.hasSwitch('new-user') ||
@@ -82,7 +70,7 @@ function isNewUserRequested() {
 }
 
 function resolveDataDir() {
-  migrateLegacyData()
+  migrateLegacyData(dataRoot)
   const requestedKey = parseUserKeyArg()
   const newUserRequested = isNewUserRequested()
   const keys = listUserKeys(dataRoot)
@@ -276,9 +264,12 @@ function registerIpcHandlers() {
     return createNewUserIdentity(username)
   })
   ipcMain.handle('setup:start-app', async () => {
+    const hasIdentity = fs.existsSync(path.join(dataDir, 'identity.json'))
     const publicKeyHex = await startNode({
-      recovery: fs.existsSync(path.join(dataDir, 'identity.json')) &&
-        !isRecovered(dataDir)
+      // Só entra em recuperação se NÃO houver dados locais estabelecidos.
+      // Um usuário com corestore local íntegro inicia direto — mesmo que o
+      // marcador recovered.json tenha se perdido (ex.: conflito de sync).
+      recovery: hasIdentity && !isEstablished(dataDir)
     })
     return { publicKeyHex, state: node.lifecycleState }
   })
@@ -357,8 +348,7 @@ async function main() {
   await app.whenReady()
   if (
     fs.existsSync(path.join(dataDir, 'identity.json')) &&
-    fs.existsSync(path.join(dataDir, 'corestore')) &&
-    isRecovered(dataDir)
+    isEstablished(dataDir)
   ) {
     await startNode()
   }
