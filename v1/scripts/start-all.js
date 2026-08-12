@@ -70,18 +70,21 @@ function main() {
     console.log(`   • ${label}  [${dataRoot}]`)
 
     const logFile = path.join(logDir, `${key || 'legacy'}.log`)
+    // IMPORTANTE: redireciona stdout/stderr para o ARQUIVO de log (não para um
+    // pipe). Quando o pai (start-all) encerra, o pipe seria fechado e qualquer
+    // console.log do Electron lançaria "EPIPE: broken pipe" — um erro não
+    // capturado que abre popups de "Error" no Electron. Com o fd apontando para
+    // o arquivo, a saída continua sendo gravada sem quebrar.
+    const logFd = fs.openSync(logFile, 'a')
     const child = spawn(electronPath, args, {
       cwd: projectRoot,
       detached: true,
-      stdio: ['ignore', 'pipe', 'pipe']
+      stdio: ['ignore', logFd, logFd]
     })
-    let log = ''
-    child.stdout.on('data', (d) => { log += d })
-    child.stderr.on('data', (d) => { log += d })
     child.on('error', (err) => {
       console.error(`❌ Falha ao iniciar instância ${label}:`, err.message)
     })
-    return { child, label, logFile, getLog: () => log, startedAt: Date.now() }
+    return { child, label, logFile, logFd, startedAt: Date.now() }
   })
 
   // Watchdog: por alguns segundos, detecta instâncias que quebram logo ao abrir
@@ -94,7 +97,6 @@ function main() {
 
   for (const entry of children) {
     entry.child.on('exit', (code, signal) => {
-      writeLog(entry)
       const quickExit = Date.now() - entry.startedAt < WATCHDOG_MS
       if (quickExit && code !== 0) {
         console.error(`⚠️ Instância ${entry.label} encerrou precocemente (exit ${code ?? 'signal ' + signal}).`)
@@ -107,26 +109,15 @@ function main() {
     })
   }
 
-  function writeLog(entry) {
-    const content = entry.getLog()
-    if (!content) return
-    try {
-      fs.writeFileSync(entry.logFile, content)
-    } catch (err) {
-      console.error(`⚠️ Não foi possível gravar o log de ${entry.label}:`, err.message)
-    }
-  }
-
   function finish() {
     clearTimeout(watchdog)
     console.log('✅ Instâncias lançadas. As janelas abrirão em instantes.')
     console.log(`   Logs de cada instância: ${logDir}`)
     for (const entry of children) {
-      writeLog(entry)
-      // Desvincula processo e pipes: o pai pode sair e as instâncias continuam.
+      // Desvincula processo e descritores: o pai pode sair e as instâncias
+      // continuam (os fd de log permanecem abertos no filho).
       entry.child.unref()
-      entry.child.stdout?.unref()
-      entry.child.stderr?.unref()
+      try { fs.closeSync(entry.logFd) } catch { /* já fechado */ }
     }
   }
 }

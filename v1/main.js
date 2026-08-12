@@ -24,6 +24,37 @@ let statusUpdateInterval = null
 let nodeLifecycle = Promise.resolve()
 let quitting = false
 
+// =====================================================================
+// Proteção contra "EPIPE: broken pipe" ao logar
+// =====================================================================
+// Quando o app é lançado pelo start-all (ou roda num terminal que é
+// fechado), o stdout/stderr pode virar um pipe quebrado. Nesse caso, um
+// console.log() lança EPIPE como exceção NÃO capturada no processo main —
+// e o Electron abre um popup de "Error". Aqui garantimos que console.log/
+// error nunca lance: erros de escrita são silenciosamente ignorados.
+for (const method of ['log', 'info', 'warn', 'error', 'debug']) {
+  const original = console[method].bind(console)
+  console[method] = (...args) => {
+    try {
+      original(...args)
+    } catch (err) {
+      if (err && (err.code === 'EPIPE' || err.code === 'ERR_STREAM_DESTROYED')) {
+        // Saída indisponível — nada a fazer além de não quebrar o app.
+      } else {
+        // Não era um problema de pipe: repassa para não esconder erros reais.
+        try { original(err) } catch { /* ignora */ }
+      }
+    }
+  }
+}
+// O stream também pode emitir 'error' (ex.: EPIPE) — sem listener isso viraria
+// uma exceção não capturada. Ignoramos silenciosamente.
+for (const stream of [process.stdout, process.stderr]) {
+  if (stream && typeof stream.on === 'function') {
+    stream.on('error', () => { /* saída indisponível — ignora */ })
+  }
+}
+
 function settingsFile() {
   return path.join(dataDir, 'settings.json')
 }

@@ -774,12 +774,13 @@ class P2PNode extends EventEmitter {
     // Reenvia o follow-request a cada novo peer conectado ao core seguido: o envio
     // inicial pode pegar apenas uma parte dos peers (a descoberta é incremental),
     // e quem conecta depois ficaria sem saber que este usuário o segue.
+    // Usa o envio DIRETO (sem loop de retry): cada peer-add dispararia um novo
+    // loop recursivo — com retry infinito isso viraria uma pilha de timers e um
+    // mar de "Aguardando peers…" no log.
     core.on('peer-add', () => {
       this.emit('peers-changed')
       if (!isFollower) {
-        this._sendFollowRequestsToPeers(pubKeyHex, entry).catch((err) => {
-          console.log('[_openFollowed] Falha ao reenviar follow-request:', err.message)
-        })
+        this._sendFollowRequestsNow(pubKeyHex, entry)
       }
     })
     core.on('peer-remove', () => this.emit('peers-changed'))
@@ -789,29 +790,13 @@ class P2PNode extends EventEmitter {
     
     return entry
   }
-  
-  /** Enviar follow-request para peers conectados (recursivo, tenta novamente se não encontrar peers) */
-  async _sendFollowRequestsToPeers(pubKeyHex, entry, attempts = 0) {
+
+  /** Envia o follow-request para os peers JÁ conectados ao core (sem retry). */
+  _sendFollowRequestsNow(pubKeyHex, entry) {
     const { core } = entry
     const peers = core.peers || []
+    if (peers.length === 0) return
 
-    if (peers.length === 0) {
-      // Nenhum peer conectado ainda — continua tentando com backoff enquanto o
-      // nó estiver vivo. Desistir cedo (antes: 6 tentativas × 500ms = 3s) faz o
-      // follow-request nunca chegar quando a descoberta DHT demora mais que isso,
-      // e o dono do perfil seguido nunca registra este usuário como seguidor.
-      if (
-        this.lifecycleState === 'stopping' ||
-        this.lifecycleState === 'stopped' ||
-        core.closed
-      ) return
-      const delay = Math.min(500 * (attempts + 1), 5000)
-      console.log('[_sendFollowRequestsToPeers] Aguardando peers para:', pubKeyHex.slice(0, 16), '(tentativa', attempts + 1, ')')
-      await new Promise(resolve => setTimeout(resolve, delay))
-      return this._sendFollowRequestsToPeers(pubKeyHex, entry, attempts + 1)
-    }
-
-    // Enviar para cada peer conectado
     const followRequest = JSON.stringify({
       type: 'follow-request',
       identityKey: this.myPublicKeyHex
@@ -831,6 +816,41 @@ class P2PNode extends EventEmitter {
     if (sent > 0) {
       console.log('[_sendFollowRequestsToPeers] ✓ Enviado follow-request para', sent, 'peer(s) em:', pubKeyHex.slice(0, 16))
     }
+  }
+
+  /** Enviar follow-request para peers conectados (recursivo, tenta novamente se não encontrar peers) */
+  async _sendFollowRequestsToPeers(pubKeyHex, entry, attempts = 0) {
+    const { core } = entry
+    const peers = core.peers || []
+
+    if (peers.length > 0) {
+      this._sendFollowRequestsNow(pubKeyHex, entry)
+      return
+    }
+
+    // Nenhum peer conectado ainda — tenta com backoff até um limite de tempo.
+    // Um retry INFINITO (como antes) faz o app ficar "eternamente em
+    // sincronizando" e enche o log com "Aguardando peers… (tentativa N)" sem
+    // nunca resolver quando o dono do perfil está offline/inacessível.
+    // A descoberta DHT é incremental: quando um peer conecta, o evento
+    // `peer-add` (em _loadFollowerData) reenvia o follow-request — então
+    // parar de sondar aqui não perde pedidos que chegam depois.
+    const MAX_ATTEMPTS = 15 // com backoff (500ms→5s) ≈ 1 minuto de sondagem
+    if (
+      attempts >= MAX_ATTEMPTS ||
+      this.lifecycleState === 'stopping' ||
+      this.lifecycleState === 'stopped' ||
+      core.closed
+    ) {
+      if (attempts === MAX_ATTEMPTS) {
+        console.log('[_sendFollowRequestsToPeers] ⚠️ Limite de tentativas atingido (peer offline?) para:', pubKeyHex.slice(0, 16))
+      }
+      return
+    }
+    const delay = Math.min(500 * (attempts + 1), 5000)
+    console.log('[_sendFollowRequestsToPeers] Aguardando peers para:', pubKeyHex.slice(0, 16), '(tentativa', attempts + 1, ')')
+    await new Promise(resolve => setTimeout(resolve, delay))
+    return this._sendFollowRequestsToPeers(pubKeyHex, entry, attempts + 1)
   }
 
   async follow(pubKeyHex) {
@@ -939,8 +959,16 @@ class P2PNode extends EventEmitter {
       }
 
       const result = await withTimeout(entry.bee.get('profile'), this.readTimeoutMs, null)
-      const finalProfile = result ? { publicKeyHex: pubKeyHex, ...result.value } : { publicKeyHex: pubKeyHex, sincronizando: true }
-      console.log('[getProfile] ✓ Perfil retornado:', { nome: finalProfile.nome, pubKeyHex: pubKeyHex.slice(0, 16) })
+      // Um perfil sincronizado SEMPRE tem `nome` (o app cria com um padrão).
+      // Se o valor não veio (bloco ainda não baixado / cópia parcial) ou o
+      // objeto está vazio, o peer está "sincronizando" — NÃO devolver um
+      // perfil sem nome, senão a UI mostra "sem nome" em vez de "sincronizando…".
+      const value = result && result.value
+      const synced = !!value && typeof value === 'object' && value.nome !== undefined
+      const finalProfile = synced
+        ? { publicKeyHex: pubKeyHex, ...value }
+        : { publicKeyHex: pubKeyHex, sincronizando: true }
+      console.log('[getProfile] ✓ Perfil retornado:', { nome: finalProfile.nome, sincronizando: finalProfile.sincronizando, pubKeyHex: pubKeyHex.slice(0, 16) })
       return finalProfile
     })
   }
