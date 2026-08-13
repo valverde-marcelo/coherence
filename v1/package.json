@@ -1,7 +1,7 @@
 {
-  "name": "p2p-social",
+  "name": "coherence",
   "version": "0.1.0",
-  "description": "Rede social P2P distribuída - núcleo Hyperswarm/Corestore/Hyperbee + interface Electron",
+  "description": "Distributed P2P social network - Hyperswarm/Corestore/Hyperbee core + Electron interface",
   "main": "main.js",
   "private": true,
   "scripts": {

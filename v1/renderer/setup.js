@@ -69,8 +69,8 @@ function buildStalledMessage(info) {
 function setRecoveryPhase(phase, info) {
   recoveryPhase = phase === 'syncing' ? 'syncing' : phase === 'stalled' ? 'stalled' : 'searching'
   if (recoveryPhase === 'stalled') recoveryStalled = true
-  // Depois de avisar que o seeder está incompleto, não deixa os eventos
-  // 'syncing' subsequentes (o loop continua tentando) sobrescreverem o aviso.
+  // After warning that the seeder is incomplete, don't let subsequent 'syncing'
+  // events (the loop keeps trying) overwrite the warning.
   if (recoveryPhase === 'syncing' && recoveryStalled) return
   setupEls.recoveryStatus.textContent = recoveryPhase === 'syncing'
     ? window.coherenceI18n.text('seederFound')
@@ -118,7 +118,7 @@ function startRecoveryMonitor() {
       updateRecoveryMeta(peers)
       updateRecoveryBlips(peers)
     } catch {
-      // O processo principal pode estar encerrando após o cancelamento.
+      // The main process may be shutting down after the cancellation.
     }
   }, 1000)
 }
@@ -149,7 +149,7 @@ window.p2p.on('recovery-updated', (result) => {
     return
   }
   if (result.state === 'waiting') {
-    // Voltou a procurar seeders (dados sumiram da rede): limpa o aviso anterior.
+    // Went back to looking for seeders (data vanished from the network): clear the previous warning.
     recoveryStalled = false
     setRecoveryPhase('searching')
     return
@@ -159,8 +159,8 @@ window.p2p.on('recovery-updated', (result) => {
     return
   }
   if (result.state === 'syncing') {
-    // Um novo seeder chegou à rede durante o stall (resetStall vem do backend):
-    // limpa o aviso e volta a mostrar "baixando dados…".
+    // A new seeder joined the network during the stall (resetStall comes from the
+    // backend): clear the warning and go back to showing "downloading data…".
     if (result.resetStall) recoveryStalled = false
     setRecoveryPhase('syncing')
   }

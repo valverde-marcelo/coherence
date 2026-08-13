@@ -1,25 +1,24 @@
 'use strict'
 
 // ====================================================================
-// P2PNode — núcleo da rede social distribuída (Opção B: Hypercore)
+// P2PNode — core of the distributed social network (Option B: Hypercore)
 //
-// Cada usuário tem UM Hyperbee (B-tree assinado sobre um Hypercore).
-// Duas famílias de chaves dentro desse Hyperbee:
+// Each user has ONE Hyperbee (signed B-tree over a Hypercore).
+// Two key families inside that Hyperbee:
 //
 //   'profile'                -> { nome, bio, avatar, followList, updatedAt }
-//   'post!<seq 12 dígitos>'  -> { tipo, texto, imagem, timestamp, autor }
+//   'post!<seq 12 digits>'   -> { tipo, texto, imagem, timestamp, autor }
 //
-// O Hypercore já garante, de fábrica, o que o protótipo original fazia
-// na mão: cada bloco é assinado, e a posição/ordem dos blocos forma uma
-// cadeia verificável (árvore de Merkle) — não precisamos mais calcular
-// nem conferir manualmente um "previousPostHash".
+// Hypercore already guarantees, out of the box, what the original prototype
+// did by hand: each block is signed, and the position/order of blocks forms
+// a verifiable chain (Merkle tree) — we no longer need to compute or check
+// a "previousPostHash" manually.
 //
-// Seguir alguém = carregar o Hypercore dela (somente leitura) via
-// Corestore e entrar no swarm do tópico dela com {server:true}. Isso
-// faz este peer também "semear" o perfil seguido quando o dono estiver
-// offline — sem precisarmos escrever nenhum código de servir dados na
-// mão: a replicação do Corestore já cuida disso com segurança (tudo
-// chega assinado e é verificado antes de aceitar).
+// Following someone = load their Hypercore (read-only) via Corestore and
+// join their topic swarm with {server:true}. This makes this peer also
+// "seed" the followed profile when the owner is offline — without needing
+// to write any data-serving code by hand: Corestore replication handles it
+// safely (everything arrives signed and is verified before being accepted).
 // ====================================================================
 
 const { EventEmitter } = require('node:events')
@@ -35,7 +34,7 @@ const { writeRecoveredMarker } = require('./user-data')
 const POST_PREFIX = 'post!'
 const POST_SEQ_DIGITS = 12
 const FOLLOWERS_PREFIX = 'followers!'
-const MAX_IMAGE_BASE64_BYTES = 400 * 1024 // ~400KB de base64 por imagem (limite v1, ver README)
+const MAX_IMAGE_BASE64_BYTES = 400 * 1024 // ~400KB of base64 per image (v1 limit, see README)
 const HEX64 = /^[0-9a-f]{64}$/i
 
 function postKey(seq) {
@@ -54,7 +53,7 @@ function pubKeyFromFollowerKey(key) {
   return key.slice(FOLLOWERS_PREFIX.length)
 }
 
-/** Resolve com `fallback` se `promise` não terminar em `ms` milissegundos. */
+/** Resolves with `fallback` if `promise` does not finish within `ms` milliseconds. */
 function withTimeout(promise, ms, fallback) {
   return new Promise((resolve) => {
     let settled = false
@@ -69,7 +68,7 @@ function withTimeout(promise, ms, fallback) {
   })
 }
 
-/** Coleta as entradas de um createReadStream do Hyperbee, com timeout (peer pode estar offline). */
+/** Collects the entries of a Hyperbee createReadStream, with timeout (peer may be offline). */
 function collectWithTimeout(stream, ms) {
   return new Promise((resolve) => {
     const results = []
@@ -91,24 +90,25 @@ function collectWithTimeout(stream, ms) {
 class P2PNode extends EventEmitter {
   /**
    * @param {object} opts
-   * @param {string} opts.dataDir - pasta onde ficam identity.json e o storage do Corestore
-   * @param {number} [opts.readTimeoutMs] - timeout ao ler dados de peers seguidos
+   * @param {string} opts.dataDir - folder where identity.json and the Corestore storage live
+   * @param {number} [opts.readTimeoutMs] - timeout when reading data from followed peers
    */
   constructor({ dataDir, readTimeoutMs = 4000, recoveryTimeoutMs = 90000, recoveryDownloadTimeoutMs = 15000, swarmOpts = {} }) {
     super()
     this.dataDir = dataDir
     this.readTimeoutMs = readTimeoutMs
     this.recoveryTimeoutMs = recoveryTimeoutMs
-    // Janela de espera por blocos em cada tentativa de download da recuperação.
-    // Menor nos testes para detectar stall mais rápido; 15s no app.
+    // Window to wait for blocks in each recovery download attempt.
+    // Smaller in tests to detect stalls faster; 15s in the app.
     this.recoveryDownloadTimeoutMs = recoveryDownloadTimeoutMs
     this.swarmOpts = swarmOpts
     this.identityFile = path.join(dataDir, 'identity.json')
     this.storageDir = path.join(dataDir, 'corestore')
-    // Durante a recuperação, o storage fica em uma pasta TEMPORÁRIA (fora do local
-    // definitivo) e só é promovido para `corestore` depois que a identidade foi de
-    // fato recuperada da rede. Assim, um usuário importado mas não recuperado nunca
-    // cria a pasta `corestore` — que é o sinal de "usuário estabelecido".
+    // During recovery, the storage lives in a TEMPORARY folder (outside the
+    // final location) and is only promoted to `corestore` after the identity
+    // was actually recovered from the network. Thus, an imported but not
+    // recovered user never creates the `corestore` folder — which is the
+    // signal of an "established user".
     this.recoveryStorageDir = path.join(dataDir, 'corestore.recovery')
 
     this.store = null
@@ -119,13 +119,13 @@ class P2PNode extends EventEmitter {
     this.followed = new Map()
     
     /**
-     * Armazena dados de peers que seguem você (seguidores).
-     * Usado apenas para exibir perfil/posts de seguidores, NÃO para o feed.
-     * Feed inclui APENAS peers em this.followed (que você segue).
+     * Stores data from peers that follow you (followers).
+     * Used only to display follower profile/posts, NOT for the feed.
+     * The feed includes ONLY peers in this.followed (people you follow).
      */
     this.followerDataCache = new Map()
     
-    // Mapa para correlacionar socketKey (Hyperswarm) → identityKey (chave real do usuário)
+    // Map to correlate socketKey (Hyperswarm) → identityKey (user's real key)
     this.peerIdentityMap = new Map()
     
     this.ready = false
@@ -159,7 +159,7 @@ class P2PNode extends EventEmitter {
   }
 
   // ------------------------------------------------------------------
-  // Ciclo de vida
+  // Lifecycle
   // ------------------------------------------------------------------
 
   async start({ recovery = false } = {}) {
@@ -217,7 +217,7 @@ class P2PNode extends EventEmitter {
         updatedAt: Date.now()
       })
     } else if (!existingProfile.value.links) {
-      // Migração para usuários existentes: adicionar campo links se não existir
+      // Migration for existing users: add the links field if it doesn't exist
       existingProfile.value.links = []
       existingProfile.value.updatedAt = Date.now()
       await this.myBee.put('profile', existingProfile.value)
@@ -225,17 +225,17 @@ class P2PNode extends EventEmitter {
 
     await this._joinTopic(this.myCore)
 
-    // Reabre a "semeadura" de quem este usuário já seguia em sessões anteriores.
-    // Isso é aguardado (não é "fire and forget") para evitar uma corrida em
-    // que um stop() logo após o start() derrubaria o swarm no meio do
-    // processo de reconexão (swarm.join em um swarm já destruído).
+    // Reopens the "seeding" of whoever this user already followed in previous sessions.
+    // This is awaited (not "fire and forget") to avoid a race where a stop() right
+    // after start() would bring the swarm down in the middle of the reconnection
+    // process (swarm.join on an already destroyed swarm).
     const profile = await this.myBee.get('profile')
     const followList = (profile && profile.value.followList) || []
     await Promise.all(followList.map((hex) =>
       this._openFollowed(hex, { waitForProfile: true }).catch((err) => this.emit('error', err))
     ))
 
-    // Usuário estabelecido: dados já estão no disco (core gravável + perfil garantido).
+    // Established user: data is already on disk (writable core + guaranteed profile).
     writeRecoveredMarker(this.dataDir)
     this.ready = true
     this.lifecycleState = 'ready'
@@ -243,27 +243,27 @@ class P2PNode extends EventEmitter {
   }
 
   /**
-   * Registra os handlers de conexão do swarm. É um método separado porque o
-   * swarm precisa ser RECRIADO durante a promoção do storage de recuperação
-   * (ver _promoteRecoveryStorage) — e o novo swarm precisa dos mesmos handlers.
+   * Registers the swarm connection handlers. It is a separate method because the
+   * swarm needs to be RECREATED during the recovery storage promotion
+   * (see _promoteRecoveryStorage) — and the new swarm needs the same handlers.
    */
   _setupSwarmHandlers() {
-    // Toda conexão P2P recebida ou iniciada replica, de forma segura,
-    // qualquer core que este processo já tenha carregado (o próprio +
-    // os dos perfis seguidos). Ver nota de privacidade no README: um
-    // peer só consegue pedir dados de um core se já souber a chave dele.
+    // Every received or initiated P2P connection safely replicates any core this
+    // process has loaded (its own + those of followed profiles). See the privacy
+    // note in the README: a peer can only request data from a core if it already
+    // knows that core's key.
 
     this.swarm.on('connection', (socket) => {
       const socketKey = socket.remotePublicKey?.toString('hex')
       const connectedAt = Date.now()
 
-      // Hand-shake para trocar identidades
+      // Handshake to exchange identities
       // { type: 'handshake', identityKey: 'ABC...' }
       //
-      // APÓS o handshake, peer pode enviar:
-      // { type: 'follow-request', identityKey: 'ABC...' }  ← pedindo para ser registrado como seguidor
+      // AFTER the handshake, the peer can send:
+      // { type: 'follow-request', identityKey: 'ABC...' }  ← asking to be registered as a follower
       //
-      // Apenas registra como seguidor se receber follow-request explícito
+      // Only registers as a follower if an explicit follow-request is received
 
       let handshakeDone = false
       let peerIdentityKey = null
@@ -310,12 +310,13 @@ class P2PNode extends EventEmitter {
           if (firstLine.startsWith('{')) {
             const msg = JSON.parse(firstLine)
             if (msg.type === 'follow-request' && msg.identityKey && msg.identityKey.length === 64) {
-              // Só registra como seguidor se o pedido for PARA ESTE nó. O
-              // emissor envia o follow-request a todos os peers conectados ao
-              // core seguido (não só ao dono) — sem checar o targetKey, um nó
-              // que apenas replica o mesmo core registraria seguidores que
-              // nunca o seguiram (ex.: Alice segue Bob; Carol replica o core
-              // de Bob; Alice viraria "seguidora" de Carol sem ter seguido).
+              // Only registers as a follower if the request is FOR THIS node. The
+              // sender sends the follow-request to every peer connected to the
+              // followed core (not only the owner) — without checking the targetKey,
+              // a node that merely replicates the same core would register followers
+              // that never followed it (e.g.: Alice follows Bob; Carol replicates
+              // Bob's core; Alice would become "Carol's follower" without having
+              // followed her).
               const targetKey = msg.targetKey
               if (!targetKey) {
                 console.log('[swarm:connection:follow-request] ⚠️ follow-request sem targetKey (versão antiga?); ignorado de:', msg.identityKey.slice(0, 16))
@@ -335,7 +336,7 @@ class P2PNode extends EventEmitter {
             }
           }
         } catch (e) {
-          // Ignorar erros de parse
+          // Ignore parse errors
         }
         return false
       }
@@ -345,16 +346,16 @@ class P2PNode extends EventEmitter {
           if (processHandshake(chunk)) {
             socket.removeListener('data', handleData)
 
-            // Iniciar replicação após handshake bem-sucedido
+            // Start replication after a successful handshake
             this._safeReplicate(socket)
 
-            // Aguardar follow-request por até 3 segundos
+            // Wait for a follow-request for up to 3 seconds
             const followRequestTimeout = setTimeout(() => {
               socket.removeListener('data', handleFollowRequest)
               console.log('[swarm:connection:follow-request] ⚠️ Timeout, nenhum follow-request recebido de:', peerIdentityKey.slice(0, 16))
             }, 3000)
 
-            // Continuar ouvindo por follow-request
+            // Keep listening for a follow-request
             const handleFollowRequest = (chunk) => {
               if (processFollowRequest(chunk)) {
                 clearTimeout(followRequestTimeout)
@@ -368,13 +369,13 @@ class P2PNode extends EventEmitter {
         }
       }
 
-      // Registrar listener ANTES de enviar (evita race condition)
+      // Register the listener BEFORE sending (avoids a race condition)
       socket.on('data', handleData)
 
-      // Enviar handshake
+      // Send handshake
       socket.write(handshakeMessage + '\n')
 
-      // Timeout se não receber handshake
+      // Timeout if no handshake is received
       const handshakeTimeout = setTimeout(() => {
         if (!handshakeDone) {
           console.log('[swarm:connection:handshake] ⚠️ Timeout, continuando sem handshake')
@@ -393,10 +394,10 @@ class P2PNode extends EventEmitter {
   }
 
   /**
-   * Inicia a replicação do Corestore em um socket, tolerando o store em transição
-   * (fechado/reaberto durante a promoção do storage de recuperação). Nesse caso a
-   * conexão é reestabelecida pelo novo swarm; aqui apenas evitamos que o erro
-   * estoure dentro do handler de 'data'.
+   * Starts Corestore replication on a socket, tolerating a store in transition
+   * (closed/reopened during the recovery storage promotion). In that case the
+   * connection is re-established by the new swarm; here we only avoid the error
+   * blowing up inside the 'data' handler.
    */
   _safeReplicate(socket) {
     try {
@@ -406,7 +407,7 @@ class P2PNode extends EventEmitter {
     }
   }
 
-  /** Prepara (e limpa) o storage temporário usado durante a recuperação da identidade. */
+  /** Prepares (and cleans) the temporary storage used during identity recovery. */
   _prepareRecoveryStorage() {
     fs.rmSync(this.recoveryStorageDir, { recursive: true, force: true })
     fs.mkdirSync(this.recoveryStorageDir, { recursive: true })
@@ -414,10 +415,10 @@ class P2PNode extends EventEmitter {
   }
 
   /**
-   * Descreve o estado de cada peer conectado a um core — diagnóstico da
-   * recuperação de identidade. Para cada peer, informa o tamanho remoto
-   * anunciado, se a cópia remota cobre todos os blocos 0..remoteLength-1
-   * (seeder completo) e quantos blocos faltam na visão remota.
+   * Describes the state of each peer connected to a core — diagnostics for
+   * identity recovery. For each peer, reports the announced remote length,
+   * whether the remote copy covers all blocks 0..remoteLength-1 (complete
+   * seeder) and how many blocks are missing from the remote view.
    */
   _describeCorePeers(core) {
     try {
@@ -439,8 +440,8 @@ class P2PNode extends EventEmitter {
           remoteContiguousLength: peer.remoteContiguousLength || 0,
           remoteSynced: !!peer.remoteSynced,
           complete,
-          // "vazio": anunciou o tamanho do core, mas não tem NENHUM bloco
-          // (ex.: outra instância da mesma identidade em modo recuperação).
+          // "empty": announced the core size, but has NO blocks at all
+          // (e.g.: another instance of the same identity in recovery mode).
           empty: remoteLength > 0 && missing === remoteLength,
           missing
         }
@@ -455,9 +456,9 @@ class P2PNode extends EventEmitter {
     let stallStreak = 0
     let stalledNotified = false
 
-    // A detecção de "seeder incompleto" precisa reagir à entrada/saída de
-    // peers: um seeder completo que aparece no meio do stall não pode ficar
-    // mascarado pelo aviso anterior (nem pelos contadores de progresso).
+    // The "incomplete seeder" detection must react to peers entering/leaving:
+    // a complete seeder that appears mid-stall cannot stay masked by the
+    // previous warning (nor by the progress counters).
     const recoveryCore = this.myCore
     const onPeerAdd = () => {
       lastDownloadedCount = -1
@@ -465,7 +466,7 @@ class P2PNode extends EventEmitter {
       const wasStalled = stalledNotified
       stalledNotified = false
       if (wasStalled) {
-        // Novo seeder na rede — limpa o aviso e volta a "baixando".
+        // New seeder on the network — clear the warning and go back to "downloading".
         this.recoveryState = 'syncing'
         this.emit('recovery-updated', { state: this.recoveryState, resetStall: true })
       }
@@ -483,7 +484,7 @@ class P2PNode extends EventEmitter {
         try {
           await withTimeout(this.myCore.update({ wait: true }), 3000, null)
           if (this.myCore.length === 0) {
-            // Nenhum seeder com dados no momento — volta para a fase de busca.
+            // No seeder with data right now — go back to the search phase.
             lastDownloadedCount = -1
             stallStreak = 0
             stalledNotified = false
@@ -495,9 +496,10 @@ class P2PNode extends EventEmitter {
             continue
           }
 
-          // Se o tamanho anunciado não é coberto por nenhum peer conectado, o
-          // seeder que o anunciou caiu da rede: o length ficou "obsoleto" e não
-          // deve ser tratado como falta de progresso (evita falso stall).
+          // If the announced size is not covered by any connected peer, the
+          // seeder that announced it left the network: the length became
+          // "stale" and should not be treated as lack of progress (avoids a
+          // false stall).
           const connectedPeers = this.myCore.peers || []
           if (connectedPeers.length > 0 &&
               !connectedPeers.some((p) => (p.remoteLength || 0) >= this.myCore.length)) {
@@ -508,22 +510,22 @@ class P2PNode extends EventEmitter {
               ' (seeder caiu?); resetando detecção de stall.')
           }
 
-          // Um seeder apareceu e há dados para baixar — avisa a UI para mostrar
-          // a fase de sincronização ("seeder encontrado, baixando dados…").
+          // A seeder appeared and there is data to download — tell the UI to
+          // show the syncing phase ("seeder found, downloading data…").
           this.recoveryState = 'syncing'
           this.emit('recovery-updated', { state: this.recoveryState })
 
-          // Conta blocos que chegam DURANTE a janela (evento 'download') para
-          // distinguir "ainda baixando" de "parado" com mais precisão do que a
-          // contagem feita apenas depois da janela fixa.
+          // Counts blocks arriving DURING the window ('download' event) to
+          // distinguish "still downloading" from "stalled" more accurately than
+          // counting only after the fixed window.
           let blocksThisIteration = 0
           const onBlockDownload = () => { blocksThisIteration++ }
           this.myCore.on('download', onBlockDownload)
 
           const download = this.myCore.download({ start: 0, end: this.myCore.length })
           this.recoveryDownload = download
-          // catch evita "unhandled rejection" se o download for destruído
-          // (timeout ou stop()) enquanto done() ainda está pendente.
+          // catch avoids an "unhandled rejection" if the download is destroyed
+          // (timeout or stop()) while done() is still pending.
           const downloaded = await withTimeout(
             download.done().then(() => true).catch(() => false), this.recoveryDownloadTimeoutMs, false
           )
@@ -532,10 +534,10 @@ class P2PNode extends EventEmitter {
           if (this.recoveryCancelled) return
 
           if (!downloaded) {
-            // O download não terminou no tempo. Conta quantos blocos realmente
-            // chegaram para distinguir "ainda baixando" de "seeder incompleto":
-            // um seeder parcial anuncia o tamanho do core, envia os blocos que
-            // tem e deixa o resto pendurado para sempre.
+            // The download did not finish in time. Count how many blocks actually
+            // arrived to distinguish "still downloading" from "incomplete seeder":
+            // a partial seeder announces the core size, sends the blocks it has
+            // and leaves the rest hanging forever.
             const len = this.myCore.length
             let have = 0
             if (len > 0) {
@@ -553,13 +555,13 @@ class P2PNode extends EventEmitter {
                 `(progresso=${progress}, streak=${stallStreak})` + (desc ? ` | ${desc}` : ''))
 
               if (progress) {
-                // Há progresso — algum peer está enviando blocos.
+                // There is progress — some peer is sending blocks.
                 lastDownloadedCount = have
                 stallStreak = 0
                 stalledNotified = false
               } else {
-                // Nenhum progresso desde a tentativa anterior: os seeders na rede
-                // têm cópias INCOMPLETAS e não conseguem enviar o que falta.
+                // No progress since the previous attempt: the seeders on the
+                // network have INCOMPLETE copies and cannot send what's missing.
                 stallStreak++
                 if (stallStreak >= 3 && !stalledNotified) {
                   stalledNotified = true
@@ -576,9 +578,10 @@ class P2PNode extends EventEmitter {
               }
             }
 
-            // Encerra o range de download desta iteração (o próximo loop cria
-            // outro) para não acumular ranges sobrepostos pedindo os blocos.
-            try { download.destroy() } catch { /* ignora */ }
+            // Ends this iteration's download range (the next loop creates
+            // another one) to avoid accumulating overlapping ranges requesting
+            // the blocks.
+            try { download.destroy() } catch { /* ignore */ }
 
             await new Promise((resolve) => setTimeout(resolve, 500))
             continue
@@ -591,8 +594,8 @@ class P2PNode extends EventEmitter {
             await this.swarm.leave(this.myCore.discoveryKey).catch(() => {})
             await this.myBee.close().catch(() => {})
             await this.myCore.close().catch(() => {})
-            // Só agora — com os dados de fato recuperados — o storage temporário é
-            // promovido para o local definitivo (dataDir/corestore).
+            // Only now — with the data actually recovered — the temporary storage is
+            // promoted to the final location (dataDir/corestore).
             await this._promoteRecoveryStorage()
 
             this.myCore = this.store.get({ key: coreKeyHex, keyPair })
@@ -628,24 +631,26 @@ class P2PNode extends EventEmitter {
   }
 
   /**
-   * Promove o storage temporário da recuperação para o local definitivo.
-   * Só deve ser chamado DEPOIS que perfil/posts foram de fato recuperados da rede.
-   * Fecha o Corestore temporário (libera os handles do RocksDB — necessário para
-   * renomear no Windows), move a pasta e reabre o Corestore no local definitivo.
+   * Promotes the temporary recovery storage to the final location.
+   * Must only be called AFTER profile/posts were actually recovered from the network.
+   * Closes the temporary Corestore (releases the RocksDB handles — required to
+   * rename on Windows), moves the folder and reopens the Corestore at the final
+   * location.
    *
-   * IMPORTANTE: o swarm também é recriado aqui. As conexões existentes carregam
-   * streams de replicação ligadas ao store ANTIGO (que será fechado); se ficarem
-   * vivas, o Hyperswarm mantém a deduplicação por chave pública (uma conexão por
-   * peer) e os cores seguidos abertos depois da promoção nunca ganham um peer de
-   * replicação — o feed fica sem posts remotos e a lista de seguidos presa em
-   * "sincronizando". Ao recriar o swarm com os handlers re-registrados, novas
-   * conexões replicam o store promovido (que já contém os cores seguidos).
+   * IMPORTANT: the swarm is also recreated here. Existing connections carry
+   * replication streams bound to the OLD store (which will be closed); if they
+   * stay alive, Hyperswarm keeps the public-key deduplication (one connection
+   * per peer) and cores opened after the promotion never get a replication peer
+   * — the feed stays without remote posts and the following list stuck on
+   * "syncing". By recreating the swarm with the handlers re-registered, new
+   * connections replicate the promoted store (which already contains the
+   * followed cores).
    */
   async _promoteRecoveryStorage() {
-    // Teardown suave do swarm ANTES de fechar o store: destrói as conexões,
-    // as descobertas e o server DHT, mas PRESERVA o DHT (que pode ser externo,
-    // ex.: um nó de testnet nos testes). O destroy() completo do swarm mataria
-    // o DHT e o novo swarm ficaria sem rede.
+    // Soft teardown of the swarm BEFORE closing the store: destroys the
+    // connections, the discoveries and the DHT server, but PRESERVES the DHT
+    // (which may be external, e.g. a testnet node in tests). A full swarm
+    // destroy() would kill the DHT and the new swarm would have no network.
     if (this.swarm) {
       for (const conn of [...this.swarm.connections]) {
         try { conn.destroy() } catch { /* ignora */ }
@@ -661,16 +666,16 @@ class P2PNode extends EventEmitter {
     try {
       fs.renameSync(this.recoveryStorageDir, this.storageDir)
     } catch {
-      // Fallback (ex.: volume diferente ou bloqueio do SO): copia e remove.
+      // Fallback (e.g. different volume or OS lock): copy and remove.
       fs.cpSync(this.recoveryStorageDir, this.storageDir, { recursive: true })
       fs.rmSync(this.recoveryStorageDir, { recursive: true, force: true })
     }
     this.store = new Corestore(this.storageDir)
     await this.store.ready()
 
-    // Recria o swarm reutilizando o mesmo DHT e keyPair, e re-registra os
-    // handlers. O novo swarm nasce com _allConnections vazio, então novas
-    // conexões são abertas e replicam o store promovido.
+    // Recreates the swarm reusing the same DHT and keyPair, and re-registers the
+    // handlers. The new swarm is born with an empty _allConnections, so new
+    // connections are opened and replicate the promoted store.
     this.swarm = new Hyperswarm({
       ...this.swarmOpts,
       ...(dht ? { dht } : {}),
@@ -698,8 +703,8 @@ class P2PNode extends EventEmitter {
     }
     if (this.swarm) await this.swarm.destroy().catch(() => {})
     if (this.store) await this.store.close().catch(() => {})
-    // Remove resíduo de uma recuperação abandonada (a pasta temporária nunca vira
-    // `corestore`; se a recuperação teve sucesso, ela já foi renomeada para lá).
+    // Removes leftover residue from an abandoned recovery (the temporary folder
+    // never becomes `corestore`; if recovery succeeded it was already renamed there).
     fs.rmSync(this.recoveryStorageDir, { recursive: true, force: true })
       this.lifecycleState = 'stopped'
     })()
@@ -707,7 +712,7 @@ class P2PNode extends EventEmitter {
     return this.stopPromise
   }
 
-  /** Chave pública compartilhável (hex) — é isso que um amigo cola para te seguir. */
+  /** Shareable public key (hex) — this is what a friend pastes to follow you. */
   get myPublicKeyHex() {
     return this.myCore.key.toString('hex')
   }
@@ -719,15 +724,15 @@ class P2PNode extends EventEmitter {
     return discovery
   }
   
-  // Armazenar qual core publicamos (para identificar em swarm.on('connection'))
+  // Store which core we published (to identify it in swarm.on('connection'))
   get myDiscoveryKey() {
     return this.myCore?.discoveryKey?.toString('hex')
   }
 
   /**
-   * Registra um seguidor no Hyperbee quando um peer se conecta para replicar o seu core.
-   * Escreve um registro persistente: followers!<pubkey> = { connectedAt, lastSeen, isActive }
-   * Também carrega automaticamente os dados (perfil, posts) do seguidor para exibir na UI.
+   * Registers a follower in the Hyperbee when a peer connects to replicate your core.
+   * Writes a persistent record: followers!<pubkey> = { connectedAt, lastSeen, isActive }
+   * Also automatically loads the follower's data (profile, posts) to display in the UI.
    */
   async _recordFollower(pubKeyHex) {
     const operation = this.followerWritePromise.then(async () => {
@@ -756,9 +761,9 @@ class P2PNode extends EventEmitter {
       await batch.flush()
       console.log('[_recordFollower] ✓ Registrado:', pubKeyHex.slice(0, 16))
       
-      // Carregar automaticamente os dados do novo seguidor (perfil, posts)
-      // Isso permite que a UI mostre informações do seguidor sem necessidade de follow
-      // Usa _loadFollowerData com isFollower: true (não _openFollowed) para evitar follow-request de volta
+      // Automatically load the new follower's data (profile, posts)
+      // This lets the UI show follower info without requiring a follow
+      // Uses _loadFollowerData with isFollower: true (not _openFollowed) to avoid sending a follow-request back
       this._loadFollowerData(pubKeyHex, true).catch((err) => {
         console.log('[_recordFollower] ⚠️ Erro ao carregar dados do seguidor:', err.message)
       })
@@ -772,8 +777,8 @@ class P2PNode extends EventEmitter {
   }
 
   /**
-   * Carrega todos os registros de seguidores do próprio Hyperbee.
-   * Retorna: [{ publicKeyHex, connectedAt, lastSeen }, ...]
+   * Loads all follower records from your own Hyperbee.
+   * Returns: [{ publicKeyHex, connectedAt, lastSeen }, ...]
    */
   async _loadFollowersFromRecords() {
     try {
@@ -799,14 +804,14 @@ class P2PNode extends EventEmitter {
   }
 
   /**
-   * Carrega os dados de um peer (core + bee) e envia follow-request.
-   * Chamado quando você explicitamente segue alguém.
+   * Loads a peer's data (core + bee) and sends a follow-request.
+   * Called when you explicitly follow someone.
    */
   async _openFollowed(pubKeyHex, { waitForProfile = false } = {}) {
     const entry = await this._loadFollowerData(pubKeyHex)
     
-    // Enviar follow-request para todos os peers conectados neste core
-    // Isso indica explicitamente que queremos ser registrados como seguidor
+    // Send a follow-request to all peers connected on this core
+    // This explicitly states that we want to be registered as a follower
     this._sendFollowRequestsToPeers(pubKeyHex, entry).catch((err) => {
       console.log('[_openFollowed] Falha ao enviar follow-requests:', err.message)
     })
@@ -829,27 +834,27 @@ class P2PNode extends EventEmitter {
       }
     }
 
-    // Importante: mesmo com o perfil já lido, garantir que TODOS os blocos do
-    // core seguido estejam em disco. Sem isso, este peer vira um "seeder
-    // incompleto": anuncia o tamanho do core, serve apenas os blocos que baixou
-    // e trava a recuperação de identidade do dono (que fica esperando blocos
-    // que ninguém na rede tem).
+    // Important: even with the profile already read, ensure ALL blocks of the
+    // followed core are on disk. Without this, this peer becomes an "incomplete
+    // seeder": it announces the core size, serves only the blocks it downloaded
+    // and stalls the owner's identity recovery (which waits for blocks nobody on
+    // the network has).
     if (profile) await this._ensureFullDownload(entry)
 
     return profile
   }
 
   /**
-   * Baixa (best-effort) todos os blocos do core de um peer seguido, para que
-   * este nó sirva como seeder COMPLETO quando o dono estiver offline.
-   * Sem isso, um seguidor pode terminar com uma cópia parcial (ex.: só as
-   * entradas que a UI leu) e não conseguir atender uma recuperação de identidade.
+   * Downloads (best-effort) all blocks of a followed peer's core, so that this
+   * node serves as a COMPLETE seeder when the owner is offline.
+   * Without this, a follower can end up with a partial copy (e.g. only the
+   * entries the UI read) and fail to serve an identity recovery.
    */
   async _ensureFullDownload(entry, timeoutMs = Math.max(this.readTimeoutMs, 15000)) {
     const { core } = entry
     if (this.lifecycleState === 'stopping' || this.lifecycleState === 'stopped') return false
 
-    // Se a cópia local já está completa, não precisa esperar a rede.
+    // If the local copy is already complete, no need to wait for the network.
     const localLen = core.length
     if (localLen > 0) {
       let complete = true
@@ -859,8 +864,8 @@ class P2PNode extends EventEmitter {
       if (complete) return true
     }
 
-    // Cópia local incompleta (ou tamanho ainda desconhecido): descobre o tamanho
-    // real pela rede e baixa os blocos faltantes, tentando até o limite de tempo.
+    // Incomplete local copy (or size still unknown): discover the real size
+    // over the network and download the missing blocks, trying until the time limit.
     const deadline = Date.now() + timeoutMs
     while (Date.now() < deadline && this.lifecycleState !== 'stopping' && this.lifecycleState !== 'stopped') {
       await withTimeout(core.update({ wait: true }), 1500, null)
@@ -878,11 +883,11 @@ class P2PNode extends EventEmitter {
   }
 
   /**
-   * Carrega os dados (core + bee) de um peer sem enviar follow-request.
-   * @param {string} pubKeyHex - Chave pública do peer
-   * @param {boolean} isFollower - Se true, armazena em followerDataCache (seguidor que não segue você).
-   *                               Se false, armazena em followed (peer que você segue).
-   * Usado internamente para sincronizar dados de seguidores e peers conectados.
+   * Loads a peer's data (core + bee) without sending a follow-request.
+   * @param {string} pubKeyHex - Peer's public key
+   * @param {boolean} isFollower - If true, stores in followerDataCache (follower who doesn't follow you).
+   *                               If false, stores in followed (peer you follow).
+   * Used internally to sync data from followers and connected peers.
    */
   async _loadFollowerData(pubKeyHex, isFollower = false) {
     const targetMap = isFollower ? this.followerDataCache : this.followed
@@ -893,19 +898,20 @@ class P2PNode extends EventEmitter {
     await core.ready()
     const bee = new Hyperbee(core, { keyEncoding: 'utf-8', valueEncoding: 'json' })
 
-    // Cria o entry ANTES de registrar os handlers: o 'peer-add' pode disparar
-    // assim que o tópico é anunciado, e o handler o referenciava em TDZ
-    // ("Cannot access 'entry' before initialization") — o follow-request para
-    // o novo peer era perdido silenciosamente.
+    // Creates the entry BEFORE registering the handlers: 'peer-add' can fire as
+    // soon as the topic is announced, and the handler referenced it in TDZ
+    // ("Cannot access 'entry' before initialization") — the follow-request to
+    // the new peer was silently lost.
     const entry = { core, bee, discovery: null }
 
     core.on('append', () => this.emit('feed-updated'))
-    // Reenvia o follow-request a cada novo peer conectado ao core seguido: o envio
-    // inicial pode pegar apenas uma parte dos peers (a descoberta é incremental),
-    // e quem conecta depois ficaria sem saber que este usuário o segue.
-    // Usa o envio DIRETO (sem loop de retry): cada peer-add dispararia um novo
-    // loop recursivo — com retry infinito isso viraria uma pilha de timers e um
-    // mar de "Aguardando peers…" no log.
+    // Resends the follow-request on every new peer connected to the followed core:
+    // the initial send may only reach part of the peers (discovery is
+    // incremental), and those who connect later wouldn't know this user follows
+    // them.
+    // Uses the DIRECT send (no retry loop): each peer-add would trigger a new
+    // recursive loop — with infinite retry that would become a pile of timers
+    // and a sea of "Waiting for peers…" in the log.
     core.on('peer-add', () => {
       this.emit('peers-changed')
       if (!isFollower && entry.core) {
@@ -920,18 +926,19 @@ class P2PNode extends EventEmitter {
     return entry
   }
 
-  /** Envia o follow-request para os peers JÁ conectados ao core (sem retry). */
+  /** Sends the follow-request to the peers ALREADY connected to the core (no retry). */
   _sendFollowRequestsNow(pubKeyHex, entry) {
     const { core } = entry
     const peers = core.peers || []
     if (peers.length === 0) return
 
-    // O follow-request declara: "identityKey está seguindo o dono do core
-    // targetKey". O alvo é obrigatório porque este nó envia o pedido a TODOS
-    // os peers conectados ao core seguido (o dono e também outros nós que
-    // estão replicando o mesmo core) — e só o dono (targetKey === ele mesmo)
-    // deve registrar o seguidor. Sem o alvo, qualquer peer conectado ao core
-    // registraria um seguidor que nunca o seguiu.
+    // The follow-request declares: "identityKey is following the owner of the
+    // targetKey core". The target is mandatory because this node sends the
+    // request to ALL peers connected to the followed core (the owner and also
+    // other nodes replicating the same core) — and only the owner
+    // (targetKey === itself) should register the follower. Without the target,
+    // any peer connected to the core would register a follower that never
+    // followed it.
     const followRequest = JSON.stringify({
       type: 'follow-request',
       identityKey: this.myPublicKeyHex,
@@ -944,7 +951,7 @@ class P2PNode extends EventEmitter {
           peer.stream.write(followRequest + '\n')
           sent++
         } catch (e) {
-          // Ignorar
+          // Ignore
         }
       }
     }
@@ -954,7 +961,7 @@ class P2PNode extends EventEmitter {
     }
   }
 
-  /** Enviar follow-request para peers conectados (recursivo, tenta novamente se não encontrar peers) */
+  /** Sends the follow-request to connected peers (recursive, retries if no peers are found) */
   async _sendFollowRequestsToPeers(pubKeyHex, entry, attempts = 0) {
     const { core } = entry
     const peers = core.peers || []
@@ -964,14 +971,14 @@ class P2PNode extends EventEmitter {
       return
     }
 
-    // Nenhum peer conectado ainda — tenta com backoff até um limite de tempo.
-    // Um retry INFINITO (como antes) faz o app ficar "eternamente em
-    // sincronizando" e enche o log com "Aguardando peers… (tentativa N)" sem
-    // nunca resolver quando o dono do perfil está offline/inacessível.
-    // A descoberta DHT é incremental: quando um peer conecta, o evento
-    // `peer-add` (em _loadFollowerData) reenvia o follow-request — então
-    // parar de sondar aqui não perde pedidos que chegam depois.
-    const MAX_ATTEMPTS = 15 // com backoff (500ms→5s) ≈ 1 minuto de sondagem
+    // No peer connected yet — try with backoff until a time limit.
+    // An INFINITE retry (like before) makes the app stay "forever syncing" and
+    // fills the log with "Waiting for peers… (attempt N)" without ever resolving
+    // when the profile owner is offline/unreachable.
+    // DHT discovery is incremental: when a peer connects, the `peer-add` event
+    // (in _loadFollowerData) resends the follow-request — so stopping the
+    // polling here doesn't miss requests that arrive later.
+    const MAX_ATTEMPTS = 15 // with backoff (500ms→5s) ≈ 1 minute of polling
     if (
       attempts >= MAX_ATTEMPTS ||
       this.lifecycleState === 'stopping' ||
@@ -997,8 +1004,8 @@ class P2PNode extends EventEmitter {
 
       await this._openFollowed(pubKeyHex)
 
-      // Garante que a cópia local do core seguido fique COMPLETA (todos os blocos),
-      // para que este nó possa servir como seeder completo numa futura recuperação.
+      // Ensures the local copy of the followed core stays COMPLETE (all blocks),
+      // so this node can serve as a complete seeder in a future recovery.
       const followedEntry = this.followed.get(pubKeyHex)
       if (followedEntry) await this._ensureFullDownload(followedEntry)
 
@@ -1040,7 +1047,7 @@ class P2PNode extends EventEmitter {
   }
 
   // ------------------------------------------------------------------
-  // Perfil
+  // Profile
   // ------------------------------------------------------------------
 
   async getMyProfile() {
@@ -1058,7 +1065,7 @@ class P2PNode extends EventEmitter {
       if (bio !== undefined) value.bio = bio
       if (avatar !== undefined) value.avatar = avatar
       if (links !== undefined) {
-        // Limitar a máximo 3 links
+        // Limit to a maximum of 3 links
         value.links = Array.isArray(links) ? links.slice(0, 3) : []
       }
       value.updatedAt = Date.now()
@@ -1068,21 +1075,21 @@ class P2PNode extends EventEmitter {
     })
   }
 
-  /** Lê o perfil de qualquer chave (própria, seguida ou seguidor), com timeout se ainda não sincronizou. */
+  /** Reads the profile of any key (own, followed or follower), with a timeout if not synced yet. */
   async getProfile(pubKeyHex) {
     return this._runOperation(async () => {
       if (pubKeyHex === this.myPublicKeyHex) {
         const entry = await this.myBee.get('profile')
         const myProf = { publicKeyHex: this.myPublicKeyHex, ...(entry ? entry.value : {}) }
-        console.log('[getProfile] Retornando MEU perfil:', myProf.nome)
+        console.log('[getProfile] Returning MY profile:', myProf.nome)
         return myProf
       }
 
-      console.log('[getProfile] Buscando perfil de:', pubKeyHex.slice(0, 16))
-      // Procurar primeiro em peers que você segue
+      console.log('[getProfile] Fetching profile from:', pubKeyHex.slice(0, 16))
+      // Look first in peers you follow
       let entry = this.followed.get(pubKeyHex)
 
-      // Se não encontrar, procurar em seguidores (followerDataCache)
+      // If not found, look in followers (followerDataCache)
       if (!entry) {
         entry = this.followerDataCache.get(pubKeyHex)
       }
@@ -1095,10 +1102,10 @@ class P2PNode extends EventEmitter {
       }
 
       const result = await withTimeout(entry.bee.get('profile'), this.readTimeoutMs, null)
-      // Um perfil sincronizado SEMPRE tem `nome` (o app cria com um padrão).
-      // Se o valor não veio (bloco ainda não baixado / cópia parcial) ou o
-      // objeto está vazio, o peer está "sincronizando" — NÃO devolver um
-      // perfil sem nome, senão a UI mostra "sem nome" em vez de "sincronizando…".
+      // A synced profile ALWAYS has `nome` (the app creates one with a default).
+      // If the value didn't arrive (block not downloaded yet / partial copy) or
+      // the object is empty, the peer is "syncing" — do NOT return a profile
+      // without a name, otherwise the UI shows "sem nome" instead of "sincronizando…".
       const value = result && result.value
       const synced = !!value && typeof value === 'object' && value.nome !== undefined
       const finalProfile = synced
@@ -1131,8 +1138,8 @@ class P2PNode extends EventEmitter {
   }
 
   /**
-   * Retorna lista de usuários que têm se conectado ao seu Hypercore.
-   * Lê registros persistentes do Hyperbee (followers!<pubkey>).
+   * Returns the list of users who have connected to your Hypercore.
+   * Reads persistent Hyperbee records (followers!<pubkey>).
    */
   async getFollowers() {
     return this._runOperation(async () => {
@@ -1143,17 +1150,17 @@ class P2PNode extends EventEmitter {
   }
 
   /**
-   * Busca usuários de forma TRANSITIVA pelo grafo de follows.
+   * Searches users TRANSITIVELY over the follow graph.
    *
-   * A partir de quem este nó segue (grau 1) e dos seus seguidores, percorre o
-   * grafo nas DUAS direções — os followLists (quem cada perfil segue) e os
-   * registros de seguidores (quem segue cada perfil) — carregando os perfis sob
-   * demanda (abre o core do usuário e lê o perfil), até maxDepth saltos. Assim,
-   * num cenário Alice→Bob→Carol→Dave, qualquer nó encontra os outros: Alice acha
-   * Carol (via Bob) e Dave (via Carol); Dave acha Bob e Alice atravessando os
-   * seguidores ao contrário — sempre há um ponto em comum.
+   * Starting from who this node follows (degree 1) and its followers, it walks
+   * the graph in BOTH directions — the followLists (who each profile follows)
+   * and the follower records (who follows each profile) — loading profiles on
+   * demand (opens the user's core and reads the profile), up to maxDepth hops.
+   * Thus, in an Alice→Bob→Carol→Dave scenario, any node finds the others: Alice
+   * finds Carol (via Bob) and Dave (via Carol); Dave finds Bob and Alice by
+   * crossing followers in reverse — there is always a common point.
    *
-   * @param {string} query - termo a casar (nome, bio ou prefixo da chave)
+   * @param {string} query - term to match (name, bio or key prefix)
    * @param {{ maxDepth?: number, maxResults?: number, timeoutMs?: number }} opts
    * @returns {Promise<Array<{publicKeyHex, nome, bio, depth, via}>>}
    */
@@ -1172,8 +1179,8 @@ class P2PNode extends EventEmitter {
         return nome.includes(q) || bio.includes(q) || String(profile.publicKeyHex).toLowerCase().includes(q)
       }
 
-      // Lê o perfil de uma chave, abrindo o core sob demanda se ainda não
-      // estiver carregado (mesmo caminho do auto-load de seguidores).
+      // Reads a key's profile, opening the core on demand if it's not loaded
+      // yet (same path as the follower auto-load).
       const loadProfile = async (key, via) => {
         let entry = this.followed.get(key) || this.followerDataCache.get(key)
         if (!entry) {
@@ -1188,9 +1195,9 @@ class P2PNode extends EventEmitter {
         const value = result && result.value
         if (!value || value.nome === undefined) return null
 
-        // Seguidores do perfil (registros followers!<pubkey>) — permite
-        // atravessar a cadeia ao CONTRÁRIO (ex.: Dave descobre Bob via os
-        // seguidores da Carol, e Alice via os seguidores do Bob).
+        // Profile's followers (followers!<pubkey> records) — allows crossing the
+        // chain in REVERSE (e.g.: Dave discovers Bob via Carol's followers, and
+        // Alice via Bob's followers).
         let followers = []
         try {
           const stream = entry.bee.createReadStream({
@@ -1202,7 +1209,7 @@ class P2PNode extends EventEmitter {
             .filter((e) => e.value && e.value.isActive)
             .map((e) => pubKeyFromFollowerKey(e.key))
         } catch {
-          // Sem seguidores legíveis (offline/parcial) — segue só para a frente.
+          // No readable followers (offline/partial) — continue forward only.
         }
         return {
           publicKeyHex: key,
@@ -1216,7 +1223,7 @@ class P2PNode extends EventEmitter {
         }
       }
 
-      // Próprio perfil (grau 0)
+      // Own profile (degree 0)
       const myProfile = await this.getProfile(this.myPublicKeyHex)
       if (myProfile && matches({ publicKeyHex: this.myPublicKeyHex, nome: myProfile.nome, bio: myProfile.bio })) {
         resultMap.set(this.myPublicKeyHex, {
@@ -1228,13 +1235,13 @@ class P2PNode extends EventEmitter {
         })
       }
 
-      // Seeds (grau 1): quem eu sigo + meus seguidores
+      // Seeds (degree 1): who I follow + my followers
       const following = await this.getFollowingList()
       for (const p of following) queue.push({ key: p.publicKeyHex, depth: 1, via: null })
       const followers = await this.getFollowers()
       for (const f of followers) queue.push({ key: f.publicKeyHex, depth: 1, via: null })
 
-      // BFS pela cadeia de follows (carrega perfis e explora os followLists)
+      // BFS over the follow chain (loads profiles and explores the followLists)
       let index = 0
       while (index < queue.length && resultMap.size < maxResults) {
         const { key, depth, via } = queue[index++]
@@ -1255,9 +1262,9 @@ class P2PNode extends EventEmitter {
         }
 
         if (depth < maxDepth) {
-          // Atravessa nas DUAS direções: quem este perfil segue (followList) e
-          // quem o segue (followers) — assim qualquer nó da cadeia encontra os
-          // outros, independente da direção dos follows.
+          // Crosses in BOTH directions: who this profile follows (followList) and
+          // who follows it (followers) — so any node in the chain finds the
+          // others, regardless of the direction of the follows.
           const neighbors = new Set([...profile.followList, ...profile.followers])
           for (const next of neighbors) {
             if (next && next !== this.myPublicKeyHex && !visited.has(next)) {
@@ -1271,16 +1278,16 @@ class P2PNode extends EventEmitter {
     })
   }
 
-  /** Retorna todos os posts de um usuário específico (seguido ou seguidor). */
+  /** Returns all posts of a specific user (followed or follower). */
   async getPostsOf(pubKeyHex) {
     return this._runOperation(async () => {
       if (pubKeyHex === this.myPublicKeyHex) {
         return this._postsFrom(pubKeyHex, this.myBee)
       }
-      // Procurar primeiro em peers que você segue
+      // Look first in peers you follow
       let entry = this.followed.get(pubKeyHex)
 
-      // Se não encontrar, procurar em seguidores
+      // If not found, look in followers
       if (!entry) {
         entry = this.followerDataCache.get(pubKeyHex)
       }
@@ -1337,7 +1344,7 @@ class P2PNode extends EventEmitter {
     return entries.map((e) => ({ seq: seqFromPostKey(e.key), autor: pubKeyHex, ...e.value }))
   }
 
-  /** Monta o feed: posts próprios + de quem você segue, mais recentes primeiro. */
+  /** Builds the feed: own posts + posts from people you follow, most recent first. */
   async getFeed({ limit = 100 } = {}) {
     return this._runOperation(async () => {
       const sources = [

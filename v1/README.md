@@ -1,164 +1,165 @@
-# Rede P2P — núcleo Opção B (Hypercore) + Electron
+# P2P Network — Core Option B (Hypercore) + Electron
 
-Primeira fatia funcional da rede social distribuída, usando **Hypercore/Corestore/Hyperbee**
-como motor do log de posts (em vez de mensagens `GET_PROFILE`/`GET_POST` na mão) e um
-shell **Electron** por cima.
+First functional slice of the distributed social network, using **Hypercore/Corestore/Hyperbee**
+as the post log engine (instead of hand-written `GET_PROFILE`/`GET_POST` messages) and an
+**Electron** shell on top.
 
-## ⚠️ Antes de tudo: sua chave pública mudou de formato
+## ⚠️ Before anything: your public key changed format
 
-No protótipo original, a "chave pública" que você compartilhava com amigos era o Ed25519
-raw (32 bytes). O **Corestore não suporta mais o modo "compat"** que preservaria isso
-(testamos — ele força `compat: false` internamente, "no compat for now" no próprio código
-deles). Então agora a chave que você compartilha é o `core.key` do Hypercore: um hash do
-manifesto (que internamente contém a mesma chave Ed25519 de sempre — a *identidade*
-criptográfica continua a mesma, só o endereço público mudou de formato).
+In the original prototype, the "public key" you shared with friends was the raw Ed25519
+(32 bytes). **Corestore no longer supports the "compat" mode** that would preserve this
+(we tested — it forces `compat: false` internally, "no compat for now" in their own code).
+So now the key you share is the Hypercore `core.key`: a hash of the manifest (which
+internally contains the same Ed25519 key as always — the cryptographic *identity* stays
+the same, only the public address format changed).
 
-Na prática: se você já tinha testado o protótipo antigo com algum amigo, vão precisar
-trocar a nova chave (visível no topo da barra lateral do app) antes de se seguirem de novo.
-Seu `identity.json` (par de chaves Ed25519) continua sendo reaproveitado — não é preciso
-recriar identidade nenhuma.
+In practice: if you already tested the old prototype with a friend, you'll need to
+exchange the new key (visible at the top of the app's sidebar) before following each
+other again. Your `identity.json` (Ed25519 keypair) continues to be reused — there's no
+need to recreate any identity.
 
-## O que já está implementado
+## What is already implemented
 
-- **`src/identity.js`** — carrega/gera o par Ed25519 (mesma lógica do protótipo original)
-  e converte para o formato `{publicKey, secretKey}` que o Hypercore espera.
-- **`src/p2p-node.js`** — a classe `P2PNode`:
-  - Um Hyperbee (B-tree assinado sobre um Hypercore) por usuário, com duas famílias de
-    chave: `profile` (nome/bio/avatar/lista de quem você segue) e `post!<seq>` (posts,
-    texto ou imagem em base64).
-  - `follow(chave)` carrega o Hypercore da pessoa (somente leitura) via Corestore e entra
-    no tópico dela no Hyperswarm com `{server: true, client: true}` — isso é o que faz
-    este nó **semear** o perfil seguido para terceiros, mesmo com o dono offline.
-  - Toda verificação de assinatura/integridade da cadeia é feita pelo próprio Hypercore
-    durante a replicação — não escrevemos isso na mão.
-  - `getFeed()` mistura posts próprios + de quem você segue, por ordem cronológica.
-- **`main.js` / `preload.js`** — processo main do Electron hospeda o `P2PNode`; o
-  renderer só fala com ele via IPC (`contextIsolation: true`, `nodeIntegration: false`).
-- **`renderer/`** — feed, formulário de publicar (texto + imagem), seguir por chave,
-  editar perfil, contador de peers conectados.
-- **Recuperação de identidade** — o backup `identity.json` inclui a chave do Hypercore.
-  Ao importar em uma instalação sem `corestore`, o app aguarda um seeder, recupera perfil,
-  posts e seguidores e **só então** cria o `corestore` local e libera escrita. Enquanto a
-  identidade não for recuperada da rede, o usuário **nunca** tem acesso a ela: cancelar/fechar
-  durante a recuperação remove a importação pendente (o próximo início volta para as boas-vindas),
-  e um crash no meio do processo volta para a tela de recuperação. Sem seeder, a opção
-  "começar do zero" agora gera uma **identidade nova** (descarta a chave importada).
-- **Pesquisa de usuários (transitiva)** — `searchUsers()` percorre o grafo de follows nas
-  duas direções (quem você segue/seguidores e, de cada perfil, seus follows e seguidores),
-  carregando perfis sob demanda até 3 saltos. Num cenário Alice→Bob→Carol→Dave, qualquer
-  usuário localiza os outros por nome, bio ou prefixo de chave, com o caminho ("via Bob",
-  "via Carol") e ações de ver perfil/seguir.
+- **`src/identity.js`** — loads/generates the Ed25519 keypair (same logic as the original
+  prototype) and converts it to the `{publicKey, secretKey}` format Hypercore expects.
+- **`src/p2p-node.js`** — the `P2PNode` class:
+  - One Hyperbee (signed B-tree over a Hypercore) per user, with two key families:
+    `profile` (name/bio/avatar/following list) and `post!<seq>` (posts, text or base64 image).
+  - `follow(key)` loads the person's Hypercore (read-only) via Corestore and joins their
+    Hyperswarm topic with `{server: true, client: true}` — this is what makes this node
+    **seed** the followed profile to third parties, even with the owner offline.
+  - All signature/integrity verification of the chain is done by Hypercore itself during
+    replication — we don't write it by hand.
+  - `getFeed()` merges your own posts + those of people you follow, in chronological order.
+- **`main.js` / `preload.js`** — Electron main process hosts the `P2PNode`; the renderer
+  only talks to it via IPC (`contextIsolation: true`, `nodeIntegration: false`).
+- **`renderer/`** — feed, publish form (text + image), follow by key, edit profile,
+  connected peer counter.
+- **Identity recovery** — the `identity.json` backup includes the Hypercore key. On an
+  installation without `corestore`, the app waits for a seeder, recovers profile, posts
+  and followers and **only then** creates the local `corestore` and unlocks writing.
+  While the identity is not recovered from the network, the user **never** gets access to
+  it: canceling/closing during recovery removes the pending import (the next start goes
+  back to the welcome screen), and a crash mid-process returns to the recovery screen.
+  Without a seeder, the "start from scratch" option now generates a **new identity**
+  (discards the imported key).
+- **Transitive user search** — `searchUsers()` traverses the follow graph in both
+  directions (who you follow/followers and, for each profile, its follows and followers),
+  loading profiles on demand up to 3 hops. In an Alice→Bob→Carol→Dave scenario, any
+  user can find the others by name, bio or key prefix, with the path ("via Bob",
+  "via Carol") and view-profile/follow actions.
 
-## Como rodar
+## How to run
 
 ```bash
 npm install
-npm start          # abre o app Electron
+npm start          # opens the Electron app
 ```
 
-Para recuperar uma conta em outra instalação, importe apenas o `identity.json` exportado.
+To recover an account on another installation, import only the exported `identity.json`.
 
-## Múltiplas instâncias e usuários locais
+## Multiple instances and local users
 
-Os dados de cada identidade ficam isolados em `coherence-data/<chave-publica>`. A aplicação não usa bloqueio de instância, portanto contas diferentes podem ser executadas ao mesmo tempo.
+Each identity's data is isolated in `coherence-data/<public-key>`. The app doesn't use an instance lock, so different accounts can run at the same time.
 
-Quando houver mais de uma conta local, informe a chave pública da conta que será aberta:
+When there is more than one local account, specify the public key of the account to open:
 
 ```bash
-npm start -- --user-key <chave-publica-hexadecimal>
+npm start -- --user-key <hex-public-key>
 ```
 
-Para abrir **todas** as contas locais encontradas em `coherence-data` de uma vez (uma janela por usuário), use:
+To open **all** local accounts found in `coherence-data` at once (one window per user), use:
 
 ```bash
 npm run start-all
 ```
 
-Esse comando detecta as pastas de cada identidade em `coherence-data` e inicia uma instância Electron para cada uma, com `--user-key` preenchido automaticamente. Ele fica de "observação" por ~20s: se alguma instância quebrar ao abrir (ex.: erro de identidade), o motivo é mostrado no terminal e o log completo fica em `%TEMP%\coherence-start-all\<chave>.log`. Depois disso o script encerra e as janelas continuam abertas.
+This command detects each identity's folder in `coherence-data` and starts one Electron instance per account, with `--user-key` filled automatically. It "watches" for ~20s: if any instance crashes on startup (e.g., identity error), the reason is shown in the terminal and the full log is at `%TEMP%\coherence-start-all\<key>.log`. After that the script exits and the windows stay open.
 
-> ⚠️ Cada identidade usa um `corestore` com lock exclusivo: a mesma conta não pode ser aberta em duas instâncias ao mesmo tempo. Se uma janela já estiver aberta para uma conta, rodar `start-all` novamente fará a nova instância dessa conta falhar com "File descriptor could not be locked" (o log explica).
+> ⚠️ Each identity uses a `corestore` with an exclusive lock: the same account cannot be open in two instances at the same time. If a window is already open for an account, running `start-all` again will make that account's new instance fail with "File descriptor could not be locked" (the log explains).
 
-Para abrir o fluxo de criação de uma nova conta mesmo quando já existem contas locais, use `--new-user`:
+To open the new-account creation flow even when local accounts already exist, use `--new-user`:
 
 ```bash
 npm start -- --new-user
 ```
 
-Também é possível usar o script dedicado, que evita que o npm interprete a opção como configuração:
+You can also use the dedicated script, which prevents npm from interpreting the option as configuration:
 
 ```bash
 npm run new-user
 ```
 
-O reset pela interface e `npm run reset` removem apenas a conta atual. Com várias contas, o reset via terminal precisa indicar a chave:
+The in-app reset and `npm run reset` only remove the current account. With multiple accounts, the terminal reset needs to specify the key:
 
 ```bash
-npm run reset -- --user-key=<chave-publica-hexadecimal>
+npm run reset -- --user-key=<hex-public-key>
 ```
 
-Para remover todos os usuários locais, use exclusivamente o comando de linha de comando:
+To remove all local users, use exclusively the command line:
 
 ```bash
 npm run reset-all
 ```
-O aplicativo aguardará um seeder que tenha o seu Hypercore; depois do timeout, a opção
-"começar do zero" gera uma **identidade nova** (a chave importada não é reaproveitada).
 
-## Testes automatizados
+The app will wait for a seeder that has your Hypercore; after the timeout, the
+"start from scratch" option generates a **new identity** (the imported key is not reused).
+
+## Automated tests
 
 ```bash
 npm test
 ```
 
-Isso roda testes de integração reais (`test/`) contra uma **DHT local isolada**
-(`hyperdht/testnet`, sem precisar de internet), cobrindo:
+This runs real integration tests (`test/`) against an **isolated local DHT**
+(`hyperdht/testnet`, no internet needed), covering:
 
-- `test-posts-and-unfollow.js` — validação de posts (texto/imagem/limite de tamanho) e follow/unfollow.
-- `test-integration-follow-sync.js` — Bob segue Alice, sincroniza o histórico e recebe posts novos em tempo real.
-- `test-follow-target.js` — o follow-request só registra o seguidor no dono correto (targetKey).
-- `test-search-transitive.js` — busca transitiva: em Alice→Bob→Carol→Dave, qualquer nó encontra os outros.
-- `test-integration-seeding.js` — **o requisito de semeadura**: Bob segue Alice, Alice fica
-  offline, Carol passa a seguir Alice mesmo assim e recebe os posts dela através do Bob.
-- `test-persistence.js` — identidade, posts e lista de seguidos sobrevivem a um reinício do app.
-- `test-restart-after-stop-race.js` — leitura concorrente durante stop e primeiro post após reabertura.
-- `test-identity-recovery.js` — recuperação de perfil, posts e seguidores usando apenas `identity.json`.
-- `test-recovery-timeout.js` — timeout sem seeder e fallback para um core novo.
-- `test-import-cancel-no-corestore.js` — importar sem seeder e cancelar não cria `corestore`;
-  recuperar com seeder promove o storage e grava o marcador de recuperação.
+- `test-posts-and-unfollow.js` — post validation (text/image/size limit) and follow/unfollow.
+- `test-integration-follow-sync.js` — Bob follows Alice, syncs the history and receives new posts in real time.
+- `test-follow-target.js` — the follow-request only registers the follower on the correct owner (targetKey).
+- `test-search-transitive.js` — transitive search: in Alice→Bob→Carol→Dave, any node finds the others.
+- `test-integration-seeding.js` — **the seeding requirement**: Bob follows Alice, Alice goes
+  offline, Carol still follows Alice and receives her posts through Bob.
+- `test-persistence.js` — identity, posts and following list survive an app restart.
+- `test-restart-after-stop-race.js` — concurrent read during stop and first post after reopening.
+- `test-identity-recovery.js` — recovery of profile, posts and followers using only `identity.json`.
+- `test-recovery-timeout.js` — timeout without a seeder and fallback to a new core.
+- `test-import-cancel-no-corestore.js` — importing without a seeder and canceling doesn't create `corestore`;
+  recovering with a seeder promotes the storage and writes the recovery marker.
 
-Todos passando no momento da entrega.
+All passing at delivery time.
 
-## O que falta (próximos passos sugeridos)
+## What's missing (suggested next steps)
 
-- **Imagens maiores**: hoje ficam embutidas em base64 dentro do post, com limite de ~400KB.
-  Evoluir para blobs referenciados por hash (`hyperblobs`/`hyperdrive`) quando isso virar gargalo.
-- **Avatar de perfil** — campo já existe no modelo de dados, falta UI pra definir.
-- **Paginação do feed** — hoje `getFeed()` lê tudo; ok para poucos posts, precisa de
-  range/`limit` real conforme o histórico cresce.
-- **Multi-dispositivo** — não escreva na mesma identidade simultaneamente em duas máquinas.
-  A recuperação baixa o histórico de um seeder e só depois reabre o core para escrita.
-- **Relay de fallback** — para CGNAT duplo, quando o hole punching não for suficiente
-  (Hyperswarm já tenta UPnP/hole punching sozinho, mas não há um relay configurado ainda).
-- **Bloqueio/mute local** — não há moderação; como os posts são imutáveis, isso só faz
-  sentido como filtro do lado de quem lê.
-- **Barra de título customizada** — hoje usa o chrome nativo do SO (funcional, não é o foco desta fase).
+- **Larger images**: currently embedded as base64 inside the post, with a ~400KB limit.
+  Evolve to blobs referenced by hash (`hyperblobs`/`hyperdrive`) when this becomes a bottleneck.
+- **Profile avatar** — the field already exists in the data model, the UI to set it is missing.
+- **Feed pagination** — today `getFeed()` reads everything; fine for a few posts, needs a
+  real range/`limit` as the history grows.
+- **Multi-device** — don't write to the same identity simultaneously from two machines.
+  Recovery downloads the history from a seeder and only then reopens the core for writing.
+- **Fallback relay** — for double CGNAT, when hole punching isn't enough
+  (Hyperswarm already tries UPnP/hole punching on its own, but there's no relay configured yet).
+- **Local block/mute** — there's no moderation; since posts are immutable, this only makes
+  sense as a filter on the reader's side.
+- **Custom title bar** — currently uses the OS native chrome (functional, not the focus of this phase).
 
-## Estrutura
+## Structure
 
 ```
 p2p-social/
-├── main.js              # processo main do Electron
-├── preload.js            # ponte segura (contextBridge) pro renderer
+├── main.js              # Electron main process
+├── preload.js            # secure bridge (contextBridge) to the renderer
 ├── src/
-│   ├── identity.js        # chave Ed25519 -> keyPair do Hypercore
-│   └── p2p-node.js         # núcleo P2P: Corestore + Hyperbee + Hyperswarm
+│   ├── identity.js        # Ed25519 key -> Hypercore keyPair
+│   └── p2p-node.js         # P2P core: Corestore + Hyperbee + Hyperswarm
 ├── renderer/
 │   ├── index.html
 │   ├── styles.css
 │   └── renderer.js
-└── test/                  # 4 testes de integração (ver acima)
+└── test/                  # integration tests (see above)
 ```
 
-`preview-da-interface.png`, ao lado deste README, é um screenshot automático (capturado
-num display virtual durante o desenvolvimento) só para conferência visual — a fonte e o
-render exatos podem variar um pouco na sua máquina.
+`preview-da-interface.png`, next to this README, is an automatic screenshot (captured
+on a virtual display during development) for visual reference only — the source and
+exact render may vary a bit on your machine.

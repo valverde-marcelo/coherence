@@ -10,10 +10,11 @@ function identityKeyHexFromIdentity(identity) {
 }
 
 /**
- * Chave pública canônica do usuário: o coreKey (chave do Hypercore, que é a
- * chave compartilhável/replicada — igual a `myPublicKeyHex`) quando presente;
- * antes do core existir (usuário novo / importação sem coreKey), cai para a
- * chave de identidade (Ed25519), que é o que nomeia a pasta na criação.
+ * Canonical user public key: the coreKey (Hypercore key, which is the
+ * shareable/replicated key — same as `myPublicKeyHex`) when present;
+ * before the core exists (new user / import without coreKey), it falls
+ * back to the identity key (Ed25519), which is what names the folder on
+ * creation.
  */
 function publicKeyHexFromIdentity(identity) {
   if (typeof identity.coreKey === 'string' && /^[0-9a-f]{64}$/i.test(identity.coreKey)) {
@@ -23,12 +24,12 @@ function publicKeyHexFromIdentity(identity) {
 }
 
 /**
- * Verifica se uma identidade corresponde a uma chave passada em --user-key.
- * A pasta de um usuário pode ter sido nomeada de duas formas legítimas:
- *   1. pela chave de identidade (Ed25519) — usuário criado localmente, ou
- *      importado antes do coreKey existir no arquivo;
- *   2. pelo coreKey — identidade importada cujo arquivo já trazia coreKey.
- * Aceita qualquer um dos dois, para não rejeitar pastas existentes.
+ * Checks whether an identity matches a key passed in --user-key.
+ * A user's folder may legitimately have been named in two ways:
+ *   1. by the identity key (Ed25519) — user created locally, or
+ *      imported before a coreKey existed in the file;
+ *   2. by the coreKey — imported identity whose file already carried a coreKey.
+ * Accepts either one, so existing folders are never rejected.
  */
 function identityMatchesKey(identity, requestedKey) {
   if (!identity) return false
@@ -53,19 +54,19 @@ function userDataDir(dataRoot, publicKeyHex) {
 }
 
 /**
- * Migra um usuário legado (identity.json + corestore na RAÍZ do dataRoot,
- * layout da versão pré multi-usuário) para uma pasta própria, nomeada pela
- * chave pública canônica.
+ * Migrates a legacy user (identity.json + corestore at the dataRoot ROOT,
+ * pre-multi-user layout) into its own folder, named after the canonical
+ * public key.
  *
- * Regras:
- *  - Só move os arquivos legados da raiz (identity.json, corestore, settings
- *    etc.). NUNCA move pastas de outros usuários locais (pastas com nome de
- *    chave hex de 64 caracteres) — senão elas seriam "engolidas" e os demais
- *    usuários sumiriam da listagem.
- *  - Se o usuário legado tem corestore local íntegro, grava o marcador
- *    `recovered.json`. Sem ele, o app trataria a conta como importação
- *    pendente e entraria em "recuperação", ignorando os dados locais e
- *    ficando eternamente em "buscando seeders na rede".
+ * Rules:
+ *  - Only moves legacy files from the root (identity.json, corestore, settings
+ *    etc.). NEVER moves other local users' folders (folders named with a
+ *    64-character hex key) — otherwise they would be "swallowed" and the other
+ *    users would disappear from the listing.
+ *  - If the legacy user has a sound local corestore, writes the `recovered.json`
+ *    marker. Without it, the app would treat the account as a pending import
+ *    and enter "recovery", ignoring local data and staying forever on
+ *    "looking for seeders on the network".
  */
 function migrateLegacyData(dataRoot) {
   const legacyIdentityFile = path.join(dataRoot, 'identity.json')
@@ -75,12 +76,12 @@ function migrateLegacyData(dataRoot) {
   fs.mkdirSync(targetDir, { recursive: true })
   for (const entry of fs.readdirSync(dataRoot, { withFileTypes: true })) {
     if (entry.name === path.basename(targetDir)) continue
-    // Nunca move pastas de outros usuários locais.
+    // Never move other local users' folders.
     if (entry.isDirectory() && /^[0-9a-f]{64}$/i.test(entry.name)) continue
     fs.renameSync(path.join(dataRoot, entry.name), path.join(targetDir, entry.name))
   }
-  // O layout legado só existia para usuários ESTABELECIDOS (o app antigo não
-  // tinha importação pendente). Com corestore local, marca como recuperado.
+  // The legacy layout only existed for ESTABLISHED users (the old app had no
+  // pending import). With a local corestore, mark it as recovered.
   if (fs.existsSync(path.join(targetDir, 'corestore'))) {
     writeRecoveredMarker(targetDir)
   }
@@ -92,11 +93,11 @@ function recoveredMarkerFile(dataDir) {
 }
 
 /**
- * Um usuário só é considerado "estabelecido/recuperado" quando este marcador existe.
- * Ele é gravado APENAS depois que a identidade importada foi de fato recuperada da
- * rede (ou quando um usuário novo/normal é criado). Sem o marcador, uma pasta
- * `corestore` órfã (ex.: de uma recuperação interrompida/cancelada) NUNCA pode ser
- * promovida a "usuário" — a aplicação volta para o fluxo de recuperação.
+ * A user is only considered "established/recovered" when this marker exists.
+ * It is written ONLY after the imported identity was actually recovered from
+ * the network (or when a new/normal user is created). Without the marker, an
+ * orphan `corestore` folder (e.g. from an interrupted/canceled recovery) can
+ * NEVER be promoted to a "user" — the app goes back to the recovery flow.
  */
 function isRecovered(dataDir) {
   return fs.existsSync(recoveredMarkerFile(dataDir))
@@ -108,14 +109,14 @@ function writeRecoveredMarker(dataDir) {
 }
 
 /**
- * Um usuário é "estabelecido" quando pode iniciar com os dados locais, sem
- * precisar de recuperação pela rede: tem o marcador recovered.json OU um
- * corestore local íntegro.
+ * A user is "established" when they can start with local data, without
+ * needing network recovery: they have the recovered.json marker OR a sound
+ * local corestore.
  *
- * Importações pendentes/canceladas NUNCA criam a pasta `corestore` (durante a
- * recuperação o storage fica em `corestore.recovery`, removido ao cancelar).
- * Portanto, a presença do `corestore` é sinal confiável de dados estabelecidos
- * — mesmo que o marcador tenha se perdido (ex.: conflito de sync/OneDrive).
+ * Pending/canceled imports NEVER create the `corestore` folder (during
+ * recovery the storage stays in `corestore.recovery`, removed on cancel).
+ * Therefore, the presence of `corestore` is a reliable sign of established
+ * data — even if the marker was lost (e.g. sync/OneDrive conflict).
  */
 function isEstablished(dataDir) {
   return isRecovered(dataDir) || fs.existsSync(path.join(dataDir, 'corestore'))

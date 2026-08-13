@@ -1,19 +1,19 @@
 'use strict'
 
 // =====================================================================
-// Recuperação de identidade com MÚLTIPLOS seeders + casos de borda da
-// detecção de "seeder incompleto" (diagnóstico por peer + robustez):
+// Identity recovery with MULTIPLE seeders + edge cases of the
+// "incomplete seeder" detection (per-peer diagnostics + robustness):
 //
-//   (a) seeder completo + seeder parcial      -> recupera
-//   (b) dois seeders parciais (união cobre)   -> recupera
-//   (c) só seeders parciais (com lacuna)      -> stalled, NÃO recupera
-//   (d) parcial primeiro (stall), depois completo chega -> recupera
+//   (a) complete seeder + partial seeder        -> recovers
+//   (b) two partial seeders (union covers)      -> recovers
+//   (c) only partial seeders (with a gap)       -> stalled, does NOT recover
+//   (d) partial first (stall), then complete arrives -> recovers
 //
-// Uso: node test/test-recovery-multi-seeder.js
+// Usage: node test/test-recovery-multi-seeder.js
 //
-// ATENÇÃO: o core da fonte CRESCE quando os seeders enviam follow-requests
-// (a fonte registra seguidores = novos blocos). O setup espera o tamanho da
-// fonte ESTABILIZAR antes de baixar os intervalos dos seeders.
+// NOTE: the source core GROWS when the seeders send follow-requests
+// (the source registers followers = new blocks). The setup waits for the
+// source size to STABILIZE before downloading the seeders' ranges.
 // =====================================================================
 
 const fs = require('node:fs')
@@ -35,7 +35,7 @@ async function waitUntil(check, { timeout = 20000, interval = 150 } = {}) {
   return false
 }
 
-/** Nó com janela de download de recuperação curta (testes rápidos). */
+/** Node with a short recovery download window (fast tests). */
 function makeNode(testnet, dir, extra = {}) {
   return new P2PNode({
     dataDir: dir,
@@ -50,7 +50,7 @@ async function stopAll(nodes) {
   await Promise.all(nodes.map((n) => n.stop().catch(() => {})))
 }
 
-/** Espera o core da fonte parar de crescer (follow-requests assentarem). */
+/** Waits for the source core to stop growing (follow-requests settle). */
 async function waitForStableLength(source) {
   let prev = -1
   let stable = 0
@@ -65,11 +65,11 @@ async function waitForStableLength(source) {
 }
 
 /**
- * Sobe a fonte (perfil + posts), conecta os seeders, espera a fonte
- * estabilizar e baixa o intervalo de cada seeder até o tamanho FINAL.
+ * Brings up the source (profile + posts), connects the seeders, waits for the
+ * source to stabilize and downloads each seeder's range up to the FINAL size.
  * @param {P2PNode} source
  * @param {Array<{node: P2PNode, getRange: (n:number)=> {start:number,end:number}}>} seeders
- * @returns {Promise<{finalLength: number, seeders: Array}>} tamanho final e seeders (com `.entry`)
+ * @returns {Promise<{finalLength: number, seeders: Array}>} final size and seeders (with `.entry`)
  */
 async function setupSourceWithSeeders(source, seeders) {
   await source.start()
@@ -94,7 +94,7 @@ async function setupSourceWithSeeders(source, seeders) {
   return { finalLength, seeders }
 }
 
-/** Índices dos blocos que o core tem localmente. */
+/** Indexes of the blocks the core has locally. */
 async function blocksOf(core, length) {
   const have = []
   for (let i = 0; i < length; i++) {
@@ -103,7 +103,7 @@ async function blocksOf(core, length) {
   return have
 }
 
-/** Verifica uma propriedade sobre os blocos de um seeder (falha se não bater). */
+/** Checks a property over a seeder's blocks (fails if it doesn't hold). */
 async function assertBlocks(entry, length, predicate, label) {
   const have = await blocksOf(entry.core, length)
   console.log(`  ${label}: blocos=[${have.join(',')}]`)
@@ -120,7 +120,7 @@ function trackRecovery(restored) {
   return states
 }
 
-// (a) seeder completo + seeder parcial -> recupera
+// (a) complete seeder + partial seeder -> recovers
 async function scenarioA(testnet) {
   const source = makeNode(testnet, tmpDir('msA-source'))
   const partial = makeNode(testnet, tmpDir('msA-partial'))
@@ -128,8 +128,8 @@ async function scenarioA(testnet) {
   const restored = makeNode(testnet, tmpDir('msA-restored'))
   try {
     const seeders = [
-      { node: partial, getRange: (n) => ({ start: 1, end: n }) },   // sem o bloco 0
-      { node: complete, getRange: (n) => ({ start: 0, end: n }) }    // completo
+      { node: partial, getRange: (n) => ({ start: 1, end: n }) },   // without block 0
+      { node: complete, getRange: (n) => ({ start: 0, end: n }) }    // complete
     ]
     const { finalLength } = await setupSourceWithSeeders(source, seeders)
     console.log('[A] length final:', finalLength)
@@ -148,7 +148,7 @@ async function scenarioA(testnet) {
   }
 }
 
-// (b) dois seeders parciais cuja união cobre todos os blocos -> recupera
+// (b) two partial seeders whose union covers all blocks -> recovers
 async function scenarioB(testnet) {
   const source = makeNode(testnet, tmpDir('msB-source'))
   const p1 = makeNode(testnet, tmpDir('msB-p1'))
@@ -162,7 +162,7 @@ async function scenarioB(testnet) {
     const { finalLength } = await setupSourceWithSeeders(source, seeders)
     const mid = Math.floor(finalLength / 2)
     console.log('[B] length final:', finalLength, '| mid:', mid)
-    // união cobre tudo: p1 tem o início, p2 tem o meio e o fim
+    // the union covers everything: p1 has the start, p2 has the middle and the end
     await assertBlocks(seeders[0].entry, finalLength, (h) => h.includes(0) && !h.includes(mid), '[B] p1')
     await assertBlocks(seeders[1].entry, finalLength, (h) => h.includes(mid) && h.includes(finalLength - 1), '[B] p2')
     await source.stop()
@@ -178,7 +178,7 @@ async function scenarioB(testnet) {
   }
 }
 
-// (c) só seeders parciais (com lacuna) -> stalled e NÃO recupera
+// (c) only partial seeders (with a gap) -> stalled and does NOT recover
 async function scenarioC(testnet) {
   const source = makeNode(testnet, tmpDir('msC-source'))
   const p1 = makeNode(testnet, tmpDir('msC-p1'))
@@ -192,7 +192,7 @@ async function scenarioC(testnet) {
     const { finalLength } = await setupSourceWithSeeders(source, seeders)
     const mid = Math.floor(finalLength / 2)
     console.log('[C] length final:', finalLength, '| mid:', mid)
-    // o bloco `mid` falta em AMBOS -> lacuna na rede
+    // the `mid` block is missing in BOTH -> gap on the network
     await assertBlocks(seeders[0].entry, finalLength, (h) => h.includes(0) && !h.includes(mid), '[C] p1')
     await assertBlocks(seeders[1].entry, finalLength, (h) => h.includes(finalLength - 1) && !h.includes(mid), '[C] p2')
     await source.stop()
@@ -207,7 +207,7 @@ async function scenarioC(testnet) {
     await restored.start({ recovery: true })
     const stalled = await waitUntil(() => states.includes('stalled'), { timeout: 70000, interval: 400 })
     const recovered = restored.lifecycleState === 'ready'
-    // Diagnóstico: todos os peers conectados devem aparecer como INCOMPLETOS
+    // Diagnostics: all connected peers must appear as INCOMPLETE
     const peersOk = stalledInfo && Array.isArray(stalledInfo.peers) &&
       stalledInfo.peers.length > 0 && stalledInfo.peers.every((p) => !p.complete)
     console.log('[C] states:', states.join(' -> '))
@@ -218,14 +218,14 @@ async function scenarioC(testnet) {
   }
 }
 
-// (d) seeder parcial primeiro (stall) e depois entra um completo -> recupera
+// (d) partial seeder first (stall) and then a complete one joins -> recovers
 async function scenarioD(testnet) {
   const source = makeNode(testnet, tmpDir('msD-source'))
   const partial = makeNode(testnet, tmpDir('msD-partial'))
   const restored = makeNode(testnet, tmpDir('msD-restored'))
   let complete2 = null
   try {
-    // só o parcial fica online durante a recuperação (sem o bloco 0)
+    // only the partial stays online during recovery (without block 0)
     const seeders = [
       { node: partial, getRange: (n) => ({ start: 1, end: n }) }
     ]
@@ -233,23 +233,24 @@ async function scenarioD(testnet) {
     console.log('[D] length final:', finalLength)
     await assertBlocks(seeders[0].entry, finalLength, (h) => !h.includes(0) && h.length === finalLength - 1, '[D] parcial')
 
-    // a fonte sai do ar, mas os dados ficam preservados em source.dataDir
+    // the source goes offline, but the data stays preserved in source.dataDir
     await source.stop()
 
     copyIdentity(source, restored)
     const states = trackRecovery(restored)
     await restored.start({ recovery: true })
 
-    // 1) só o seeder parcial -> deve travar (stalled)
+    // 1) only the partial seeder -> must stall (stalled)
     const stalled = await waitUntil(() => states.includes('stalled'), { timeout: 70000, interval: 400 })
     console.log('[D] stalled com parcial?', stalled)
     if (!stalled) return false
 
-    // 2) o dispositivo do dono reconecta: a fonte está parada (lock liberado),
-    //    então um novo nó abre o MESMO dataDir (dados completos em disco) e
-    //    volta à rede -> o peer-add reseta a detecção e a recuperação prossegue.
-    //    (Não dá para COPIAR o corestore: o rocksdb-native valida o arquivo do
-    //    dispositivo e rejeita cópias com "Invalid device file, was modified".)
+    // 2) the owner's device reconnects: the source is stopped (lock released),
+    //    so a new node opens the SAME dataDir (complete data on disk) and
+    //    returns to the network -> peer-add resets the detection and recovery
+    //    proceeds.
+    //    (You can't COPY the corestore: rocksdb-native validates the device
+    //    file and rejects copies with "Invalid device file, was modified".)
     complete2 = makeNode(testnet, source.dataDir)
     await complete2.start()
     const recovered = await waitUntil(() => restored.lifecycleState === 'ready', { timeout: 60000, interval: 400 })

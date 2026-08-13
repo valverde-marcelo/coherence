@@ -1,24 +1,24 @@
 'use strict'
 
 // =====================================================================
-// Testa o ALVO do follow-request (Fix: targetKey).
+// Tests the TARGET of the follow-request (Fix: targetKey).
 //
-// Cenário (reproduz o bug reportado):
-//   A (Alice) limpa, B (Bob) limpo, C (Carol) limpa
-//   B segue C
-//   A segue B
+// Scenario (reproduces the reported bug):
+//   A (Alice) clean, B (Bob) clean, C (Carol) clean
+//   B follows C
+//   A follows B
 //
-// Comportamento esperado:
-//   - B registra A como seguidora        (A segue B)           ✓
-//   - C registra B como seguidor         (B segue C)           ✓
-//   - C NÃO deve registrar A             (A não segue C)       ✓ (bug: A aparecia)
+// Expected behavior:
+//   - B registers A as follower         (A follows B)           ✓
+//   - C registers B as follower         (B follows C)           ✓
+//   - C must NOT register A             (A doesn't follow C)    ✓ (bug: A appeared)
 //
-// O bug: Alice e Carol acabam no tópico do core de Bob (Alice porque segue
-// Bob; Carol porque auto-carregou Bob como seguidor). Alice então envia o
-// follow-request a TODOS os peers do core de Bob — incluindo Carol — e Carol
-// registrava Alice sem verificar que o pedido era para ela.
+// The bug: Alice and Carol end up in Bob's core topic (Alice because she follows
+// Bob; Carol because she auto-loaded Bob as a follower). Alice then sends the
+// follow-request to ALL peers in Bob's core — including Carol — and Carol
+// registered Alice without checking that the request was meant for her.
 //
-// Uso: node test/test-follow-target.js
+// Usage: node test/test-follow-target.js
 // =====================================================================
 
 const fs = require('node:fs')
@@ -58,33 +58,33 @@ async function waitUntil(check, { timeout = 12000, interval = 150 } = {}) {
   console.log('Bob  :', bob.myPublicKeyHex.slice(0, 16))
   console.log('Carol:', carol.myPublicKeyHex.slice(0, 16))
 
-  // B segue C; A segue B
+  // B follows C; A follows B
   await bob.follow(carol.myPublicKeyHex)
   await alice.follow(bob.myPublicKeyHex)
 
-  // Bob registra Alice como seguidora (correto)
+  // Bob registers Alice as a follower (correct)
   const bobHasAlice = await waitUntil(async () => {
     const followers = await bob.getFollowers()
     return followers.some((f) => f.publicKeyHex === alice.myPublicKeyHex)
   }, { timeout: 15000 })
   console.log('Bob registrou Alice como seguidora?', bobHasAlice)
 
-  // Carol registra Bob como seguidor (correto)
+  // Carol registers Bob as a follower (correct)
   const carolHasBob = await waitUntil(async () => {
     const followers = await carol.getFollowers()
     return followers.some((f) => f.publicKeyHex === bob.myPublicKeyHex)
   }, { timeout: 15000 })
   console.log('Carol registrou Bob como seguidor?', carolHasBob)
 
-  // Garante a topologia do bug: Alice e Carol conectadas no core do Bob
-  // (Carol entrou no tópico de Bob via auto-load de seguidor).
+  // Ensures the bug's topology: Alice and Carol connected in Bob's core
+  // (Carol joined Bob's topic via follower auto-load).
   const topology = await waitUntil(() => {
     const entry = alice.followed.get(bob.myPublicKeyHex)
     return entry && entry.core.peers.length >= 2
   }, { timeout: 15000 })
   console.log('Alice e Carol no tópico do core de Bob (topologia do bug)?', topology)
 
-  // Espera um tempo para qualquer follow-request "vazado" chegar na Carol.
+  // Waits a while for any "leaked" follow-request to reach Carol.
   await new Promise((r) => setTimeout(r, 4000))
   const carolFollowers = await carol.getFollowers()
   console.log('Seguidores da Carol:', carolFollowers.map((f) => f.publicKeyHex.slice(0, 12)).join(', ') || '(nenhum)')

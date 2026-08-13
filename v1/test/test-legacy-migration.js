@@ -1,13 +1,14 @@
 'use strict'
 
-// Testa a migração do layout legado (identity.json + corestore na raiz do
-// dataRoot) para a pasta por-chave. Verifica duas regras críticas:
+// Tests the migration of the legacy layout (identity.json + corestore at the
+// dataRoot root) to the per-key folder. Verifies two critical rules:
 //
-//  1. O usuário legado migrado com corestore local recebe o marcador
-//     `recovered.json` — sem ele o app entraria em "recuperação" eterna
-//     ("buscando seeders na rede", "peers na rede: 0") ignorando os dados locais.
-//  2. A migração NUNCA move pastas de outros usuários locais (pastas hex de 64)
-//     — senão os demais usuários "sumiriam" da listagem do start-all.
+//  1. The migrated legacy user with a local corestore receives the
+//     `recovered.json` marker — without it the app would enter an eternal
+//     "recovery" ("looking for seeders on the network", "peers on the network: 0")
+//     ignoring the local data.
+//  2. The migration NEVER moves other local users' folders (64-hex folders)
+//     — otherwise the other users would "disappear" from the start-all listing.
 
 const fs = require('node:fs')
 const os = require('node:os')
@@ -36,12 +37,12 @@ function makeLegacyIdentity(dir) {
 ;(async () => {
   const results = {}
 
-  // ---- Caso A: legado com corestore local + outro usuário por-chave na raiz
+  // ---- Case A: legacy with local corestore + another per-key user at the root
   const rootA = tmpRoot('legacy-migrate-A')
   makeLegacyIdentity(rootA)
   fs.mkdirSync(path.join(rootA, 'corestore'), { recursive: true })
   fs.writeFileSync(path.join(rootA, 'corestore', 'CORESTORE'), 'x')
-  // Outro usuário local (pasta hex de 64) que NÃO pode ser movido.
+  // Another local user (64-hex folder) that must NOT be moved.
   const otherKey = 'bf4470ee990388235613535d7ca97967d0b77e0b27a60681bcafc7f2083aa4d7'
   fs.mkdirSync(path.join(rootA, otherKey), { recursive: true })
   fs.writeFileSync(path.join(rootA, otherKey, 'identity.json'), '{}')
@@ -59,7 +60,7 @@ function makeLegacyIdentity(dir) {
   results.A_rootClean = !fs.existsSync(path.join(rootA, 'identity.json'))
   results.A_listedKeys = listUserKeys(rootA).sort().join(',')
 
-  // ---- Caso B: legado SEM corestore (importação pendente) → NÃO marca
+  // ---- Case B: legacy WITHOUT corestore (pending import) → does NOT mark
   const rootB = tmpRoot('legacy-migrate-B')
   makeLegacyIdentity(rootB)
   const migratedB = migrateLegacyData(rootB)
@@ -68,7 +69,7 @@ function makeLegacyIdentity(dir) {
   results.B_noMarker = !isRecovered(targetB)
   results.B_notEstablished = !isEstablished(targetB)
 
-  // ---- Caso C: raiz sem identity.json → nada a migrar
+  // ---- Case C: root without identity.json → nothing to migrate
   const rootC = tmpRoot('legacy-migrate-C')
   fs.mkdirSync(path.join(rootC, 'deadbeef'), { recursive: true })
   results.C_noop = migrateLegacyData(rootC) === false

@@ -9,11 +9,11 @@ const { spawn } = require('node:child_process')
 const { listUserKeys, readIdentity } = require('../src/user-data')
 
 /**
- * Inicia TODAS as contas locais encontradas em coherence-data, abrindo uma
- * instância Electron separada por usuário (a aplicação não usa bloqueio de
- * instância, então contas diferentes podem rodar ao mesmo tempo).
+ * Starts ALL local accounts found in coherence-data, opening a separate
+ * Electron instance per user (the app doesn't use an instance lock, so
+ * different accounts can run at the same time).
  *
- * Uso:
+ * Usage:
  *   npm run start-all
  */
 
@@ -26,9 +26,9 @@ const dataRoots = [
 ].filter(Boolean)
 
 /**
- * Encontra todas as instâncias (usuários locais) em todos os possíveis roots
- * de dados. Cada instância é identificada pela chave pública da conta. Uma
- * conta legada única (identity.json na raiz) também é incluída.
+ * Finds all instances (local users) in every possible data root. Each instance
+ * is identified by the account's public key. A single legacy account
+ * (identity.json at the root) is also included.
  */
 function findInstances() {
   const instances = []
@@ -56,8 +56,8 @@ function main() {
     process.exit(0)
   }
 
-  // O módulo "electron", quando carregado por um script Node, exporta o
-  // caminho do binário do Electron.
+  // The "electron" module, when loaded by a Node script, exports the path
+  // to the Electron binary.
   const electronPath = require('electron')
   const projectRoot = path.join(__dirname, '..')
   const logDir = path.join(os.tmpdir(), 'coherence-start-all')
@@ -70,11 +70,11 @@ function main() {
     console.log(`   • ${label}  [${dataRoot}]`)
 
     const logFile = path.join(logDir, `${key || 'legacy'}.log`)
-    // IMPORTANTE: redireciona stdout/stderr para o ARQUIVO de log (não para um
-    // pipe). Quando o pai (start-all) encerra, o pipe seria fechado e qualquer
-    // console.log do Electron lançaria "EPIPE: broken pipe" — um erro não
-    // capturado que abre popups de "Error" no Electron. Com o fd apontando para
-    // o arquivo, a saída continua sendo gravada sem quebrar.
+    // IMPORTANT: redirects stdout/stderr to the LOG FILE (not a pipe). When the
+    // parent (start-all) exits, the pipe would be closed and any console.log
+    // from Electron would throw "EPIPE: broken pipe" — an uncaught error that
+    // opens "Error" popups in Electron. With the fd pointing to the file, the
+    // output keeps being written without breaking.
     const logFd = fs.openSync(logFile, 'a')
     const child = spawn(electronPath, args, {
       cwd: projectRoot,
@@ -87,10 +87,10 @@ function main() {
     return { child, label, logFile, logFd, startedAt: Date.now() }
   })
 
-  // Watchdog: por alguns segundos, detecta instâncias que quebram logo ao abrir
-  // (ex.: erro de identidade) e mostra o log — assim o usuário vê o motivo em
-  // vez de uma falha silenciosa. Depois do período, o script encerra e as
-  // instâncias sobrevivem (detached + unref).
+  // Watchdog: for a few seconds, detects instances that crash right on startup
+  // (e.g. identity error) and shows the log — so the user sees the reason
+  // instead of a silent failure. After the period, the script exits and the
+  // instances survive (detached + unref).
   const WATCHDOG_MS = 20000
   const watchdog = setTimeout(finish, WATCHDOG_MS)
   let remaining = children.length
@@ -114,8 +114,8 @@ function main() {
     console.log('✅ Instâncias lançadas. As janelas abrirão em instantes.')
     console.log(`   Logs de cada instância: ${logDir}`)
     for (const entry of children) {
-      // Desvincula processo e descritores: o pai pode sair e as instâncias
-      // continuam (os fd de log permanecem abertos no filho).
+      // Detaches the process and descriptors: the parent can exit and the
+      // instances keep running (the log fds stay open in the child).
       entry.child.unref()
       try { fs.closeSync(entry.logFd) } catch { /* já fechado */ }
     }

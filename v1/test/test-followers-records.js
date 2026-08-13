@@ -1,10 +1,10 @@
 'use strict'
 
-// Testa o novo sistema de registros de seguidores:
-// - Quando um peer se conecta ao seu core para replicar, um record é registrado
-// - getFollowers() lê esses registros
-// - Records persistem após restart
-// - Novos seguidores podem ser adicionados dinamicamente
+// Tests the new follower records system:
+// - When a peer connects to your core to replicate, a record is registered
+// - getFollowers() reads those records
+// - Records persist after a restart
+// - New followers can be added dynamically
 
 const fs = require('node:fs')
 const os = require('node:os')

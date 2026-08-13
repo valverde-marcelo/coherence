@@ -37,7 +37,7 @@ contextBridge.exposeInMainWorld('p2p', {
   getDonationQr: () => ipcRenderer.invoke('get-donation-qr'),
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
 
-  /** Assina um evento vindo do processo main. Retorna uma função para cancelar a assinatura. */
+  /** Subscribes to an event from the main process. Returns a function to unsubscribe. */
   on(eventName, callback) {
     if (!EVENTS.includes(eventName)) throw new Error('evento desconhecido: ' + eventName)
     const channel = 'p2p:event:' + eventName

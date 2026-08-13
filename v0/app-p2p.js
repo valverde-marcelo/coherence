@@ -5,51 +5,51 @@ import nodeCrypto from 'node:crypto'
 import fs from 'node:fs'
 
 // ====================================================================
-// 1. IDENTIDADE E PÁGINA PESSOAL (Com Assinatura Digital) - SOLUÇÃO DEFINITIVA
+// 1. IDENTITY AND PERSONAL PAGE (With Digital Signature) - FINAL SOLUTION
 // ====================================================================
 
 const KEY_FILE = './identity.json'
 let keyPair
 let publicKeyBuffer
 
-// O Node não possui format:'buffer' nem type:'ed25519' em KeyObject.export().
-// Para obter os 32 bytes crus da chave pública Ed25519, exportamos como JWK
-// (formato OKP/RFC 8037) e decodificamos o campo "x", que é a chave em base64url.
+// Node does not have format:'buffer' nor type:'ed25519' in KeyObject.export().
+// To get the raw 32 bytes of the Ed25519 public key, we export as JWK
+// (OKP/RFC 8037 format) and decode the "x" field, which is the key in base64url.
 function getRawPublicKey(publicKeyObject) {
   const jwk = publicKeyObject.export({ format: 'jwk' })
   return Buffer.from(jwk.x, 'base64url')
 }
 
-// Carrega ou gera o par de chaves Ed25519
+// Loads or generates the Ed25519 keypair
 if (fs.existsSync(KEY_FILE)) {
   const saved = JSON.parse(fs.readFileSync(KEY_FILE))
   keyPair = {
     publicKey: nodeCrypto.createPublicKey(saved.publicKey),
     privateKey: nodeCrypto.createPrivateKey(saved.privateKey)
   }
-  // Exporta nativamente os 32 bytes puros da chave Ed25519 carregada
+  // Natively exports the raw 32 bytes of the loaded Ed25519 key
   publicKeyBuffer = getRawPublicKey(keyPair.publicKey)
 } else {
   keyPair = nodeCrypto.generateKeyPairSync('ed25519')
   
-  // Salva no arquivo a estrutura PEM padrão para persistência segura
+  // Saves the standard PEM structure to the file for secure persistence
   fs.writeFileSync(KEY_FILE, JSON.stringify({
     publicKey: keyPair.publicKey.export({ type: 'spki', format: 'pem' }),
     privateKey: keyPair.privateKey.export({ type: 'pkcs8', format: 'pem' })
   }))
   
-  // Exporta nativamente os 32 bytes puros da chave Ed25519 recém-criada
+  // Natively exports the raw 32 bytes of the newly created Ed25519 key
   publicKeyBuffer = getRawPublicKey(keyPair.publicKey)
 }
 
-// Chave pública em formato hexadecimal com EXATAMENTE 64 caracteres para o painel web
+// Public key in hexadecimal format with EXACTLY 64 characters for the web panel
 const publicKeyHex = publicKeyBuffer.toString('hex')
 
-// Passa o buffer garantido de 32 bytes diretamente para gerar o tópico de descoberta
+// Passes the guaranteed 32-byte buffer directly to generate the discovery topic
 const topic = crypto.discoveryKey(publicKeyBuffer)
 
 
-// Perfil local
+// Local profile
 const PROFILE_FILE = './my_profile.json'
 if (!fs.existsSync(PROFILE_FILE)) {
   fs.writeFileSync(PROFILE_FILE, JSON.stringify({
@@ -65,9 +65,10 @@ function getSignedProfile() {
   const profileData = JSON.parse(fs.readFileSync(PROFILE_FILE))
   const payload = JSON.stringify(profileData)
   
-  // Ed25519 não suporta a API de streaming Sign/Verify do Node;
-  // o correto é usar crypto.sign(algorithm, data, key) em modo "one-shot",
-  // passando algorithm = null (a curva já faz seu próprio hash internamente).
+  // Ed25519 doesn't support Node's streaming Sign/Verify API;
+  // the correct approach is to use crypto.sign(algorithm, data, key) in
+  // "one-shot" mode, passing algorithm = null (the curve already does its own
+  // hashing internally).
   const signature = nodeCrypto.sign(null, Buffer.from(payload), keyPair.privateKey)
 
   return {
@@ -78,25 +79,25 @@ function getSignedProfile() {
 }
 
 // ====================================================================
-// 2. CAMADAS 1 E 2: BITTORRENT HYPERSWARM (UPnP + Hole Punching)
+// 2. LAYERS 1 AND 2: BITTORRENT HYPERSWARM (UPnP + Hole Punching)
 // ====================================================================
 
-// O Hyperswarm executa automaticamente:
-// 1. Abertura UPnP/NAT-PMP no roteador local (Camada 1)
-// 2. Furamento de NAT / UDP Hole Punching via STUN (Camada 2)
+// Hyperswarm automatically performs:
+// 1. UPnP/NAT-PMP opening on the local router (Layer 1)
+// 2. NAT traversal / UDP Hole Punching via STUN (Layer 2)
 const swarm = new Hyperswarm()
 
-// Escuta por novas conexões P2P diretas recebidas
+// Listens for new direct P2P connections received
 swarm.on('connection', (socket, peerInfo) => {
-  // O objeto peerInfo do Hyperswarm NÃO possui uma propriedade ".peer" — ele expõe
-  // publicKey, client, relayAddresses, topics, etc. O IP/porta remotos ficam no
-  // stream UDX de baixo nível, acessível via socket.rawStream.
+  // The Hyperswarm peerInfo object does NOT have a ".peer" property — it exposes
+  // publicKey, client, relayAddresses, topics, etc. The remote IP/port are on the
+  // low-level UDX stream, accessible via socket.rawStream.
   const host = socket.rawStream?.remoteHost || 'desconhecido'
   const port = socket.rawStream?.remotePort
   const papel = peerInfo.client ? 'cliente' : 'servidor'
   console.log(`\n⚡ [P2P Direct Engine] Nova conexão estabelecida via Hole Punching/UPnP! IP: ${host}${port ? ':' + port : ''} (papel: ${papel})`)
 
-  // Quando o nó remoto pede a página, enviamos os dados assinados
+  // When the remote node asks for the page, we send the signed data
   socket.on('data', (data) => {
     const msg = data.toString()
     if (msg === 'GET_PROFILE') {
@@ -106,7 +107,7 @@ swarm.on('connection', (socket, peerInfo) => {
   })
 })
 
-// Anuncia nosso Tópico na DHT para que outros nós consigam nos furar/conectar
+// Announces our Topic on the DHT so other nodes can punch through/connect to us
 const discovery = swarm.join(topic, { server: true, client: true })
 
 discovery.flushed().then(() => {
@@ -114,7 +115,7 @@ discovery.flushed().then(() => {
 })
 
 // ====================================================================
-// 3. INTERFACE WEB LOCAL (Express para o usuário controlar)
+// 3. LOCAL WEB INTERFACE (Express for the user to control)
 // ====================================================================
 
 const app = express()
@@ -157,28 +158,28 @@ app.get('/', (req, res) => {
   `)
 })
 
-// Rota de visitação entre redes usando a Camada 2 (Hole Punching)
+// Visitation route between networks using Layer 2 (Hole Punching)
 app.get('/visit', async (req, res) => {
   const friendKey = req.query.key.trim()
   if (!friendKey) return res.send("Chave inválida.")
 
   console.log(`\n🔍 [Hole Punching] Iniciando processo de furamento de NAT para a chave: ${friendKey.slice(0, 15)}...`)
 
-  // Deriva o tópico do amigo a partir da chave pública dele
+  // Derives the friend's topic from their public key
   const friendTopic = crypto.discoveryKey(Buffer.from(friendKey, 'hex'))
 
-  // Entra na sala do amigo na DHT para iniciar o handshaking UDP/STUN
+  // Joins the friend's room on the DHT to start the UDP/STUN handshake
   const friendDiscovery = swarm.join(friendTopic, { client: true, server: false })
   
   let connected = false
 
-  // Tenta encontrar e furar a conexão com o nó do amigo
+  // Tries to find and punch through to the friend's node
   const onConnection = (socket) => {
     if (connected) return
     connected = true
     console.log('🎯 [Hole Punching Success] Conexão P2P estabelecida diretamente com a máquina do amigo!')
 
-    // Pede o perfil do amigo pela conexão socket aberta
+    // Asks the friend for their profile over the open socket
     socket.write('GET_PROFILE')
 
     socket.on('data', (data) => {
@@ -205,7 +206,7 @@ app.get('/visit', async (req, res) => {
 
   swarm.once('connection', onConnection)
 
-  // Timeout de 15 segundos caso o Hole Punching não consiga furar
+  // 15-second timeout in case Hole Punching can't punch through
   setTimeout(() => {
     if (!connected) {
       swarm.off('connection', onConnection)

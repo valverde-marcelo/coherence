@@ -1,10 +1,9 @@
 'use strict'
 
-// Testa o requisito de "semeadura": Bob segue Alice e fica com os posts
-// dela em cache. Alice fica OFFLINE. Carol passa a seguir Alice mesmo assim
-// — like ela não consegue falar com a Alice diretamente, mas Bob (que
-// também está anunciado no tópico da Alice, como {server:true}) serve os
-// dados em nome dela.
+// Tests the "seeding" requirement: Bob follows Alice and caches her posts.
+// Alice goes OFFLINE. Carol still follows Alice — even though she can't talk
+// to Alice directly, Bob (who is also announced on Alice's topic, as
+// {server:true}) serves the data on her behalf.
 
 const fs = require('node:fs')
 const os = require('node:os')

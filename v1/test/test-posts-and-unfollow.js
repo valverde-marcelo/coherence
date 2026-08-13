@@ -15,12 +15,12 @@ function tmpDir(name) {
   const node = new P2PNode({ dataDir: tmpDir('imgtest'), swarmOpts: { dht: testnet.createNode() } })
   await node.start()
 
-  // post de imagem válido
+  // valid image post
   const tinyPngBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='
   const post = await node.publishPost({ tipo: 'imagem', imagem: { dataBase64: tinyPngBase64, mime: 'image/png' } })
   console.log('post de imagem aceito:', post.tipo === 'imagem' && post.imagem.mime === 'image/png')
 
-  // imagem grande demais deve ser rejeitada
+  // an image that is too large must be rejected
   let rejected = false
   try {
     await node.publishPost({ tipo: 'imagem', imagem: { dataBase64: 'A'.repeat(500 * 1024), mime: 'image/png' } })
@@ -29,7 +29,7 @@ function tmpDir(name) {
   }
   console.log('imagem grande demais foi rejeitada:', rejected)
 
-  // post sem tipo válido deve falhar
+  // a post without a valid type must fail
   let rejectedTipo = false
   try {
     await node.publishPost({ tipo: 'video', texto: 'x' })
@@ -38,7 +38,7 @@ function tmpDir(name) {
   }
   console.log("tipo inválido ('video') foi rejeitado:", rejectedTipo)
 
-  // seguir a si mesmo deve falhar
+  // following yourself must fail
   let cantFollowSelf = false
   try {
     await node.follow(node.myPublicKeyHex)
@@ -47,7 +47,7 @@ function tmpDir(name) {
   }
   console.log('seguir a si mesmo foi bloqueado:', cantFollowSelf)
 
-  // follow + unfollow de uma chave hex qualquer (sem precisar estar online)
+  // follow + unfollow of an arbitrary hex key (no need to be online)
   const fakeKey = '11'.repeat(32)
   await node.follow(fakeKey)
   const followingAfter = (await node.getMyProfile()).followList

@@ -1,17 +1,16 @@
 'use strict'
 
 // ====================================================================
-// Identidade: reaproveita EXATAMENTE a mesma estratégia do protótipo
-// original (app-p2p.js) para gerar/carregar o par de chaves Ed25519
-// via node:crypto, e adiciona a conversão para o formato usado pelo
-// Hypercore ({ publicKey: 32 bytes, secretKey: 64 bytes }).
+// Identity: reuses EXACTLY the same strategy from the original prototype
+// (app-p2p.js) to generate/load the Ed25519 keypair via node:crypto, and
+// adds the conversion to the format used by Hypercore
+// ({ publicKey: 32 bytes, secretKey: 64 bytes }).
 //
-// Por quê reaproveitar a mesma chave? Porque a identidade "de verdade"
-// do usuário é o par de chaves Ed25519 em si (é ele que assina tudo).
-// O formato do endereço público que você compartilha com os amigos
-// muda (ver README/NOTAS-OPCAO-B.md), mas a chave privada continua
-// sendo a mesma — nenhum usuário perde ou precisa recriar sua
-// identidade criptográfica por causa dessa migração.
+// Why reuse the same key? Because the user's "real" identity is the
+// Ed25519 keypair itself (it signs everything). The format of the public
+// address you share with friends changes (see README/NOTAS-OPCAO-B.md),
+// but the private key stays the same — no user loses or needs to recreate
+// their cryptographic identity because of this migration.
 // ====================================================================
 
 const fs = require('node:fs')
@@ -19,8 +18,8 @@ const path = require('node:path')
 const nodeCrypto = require('node:crypto')
 
 function rawPublicKeyBytes(publicKeyObject) {
-  // Node não expõe format:'buffer' para chaves Ed25519 — exportamos
-  // como JWK (RFC 8037) e decodificamos o campo "x" (base64url).
+  // Node does not expose format:'buffer' for Ed25519 keys — we export
+  // as JWK (RFC 8037) and decode the "x" field (base64url).
   const jwk = publicKeyObject.export({ format: 'jwk' })
   return Buffer.from(jwk.x, 'base64url')
 }
@@ -31,8 +30,8 @@ function rawSeedBytes(privateKeyObject) {
 }
 
 /**
- * Converte um par de chaves node:crypto (PEM, Ed25519) no formato usado
- * pelas libs do ecossistema Hypercore (libsodium): secretKey = seed(32) + publicKey(32).
+ * Converts a node:crypto keypair (PEM, Ed25519) into the format used by the
+ * Hypercore ecosystem libs (libsodium): secretKey = seed(32) + publicKey(32).
  */
 function toHypercoreKeyPair(publicKeyObject, privateKeyObject) {
   const publicKey = rawPublicKeyBytes(publicKeyObject)
@@ -42,9 +41,9 @@ function toHypercoreKeyPair(publicKeyObject, privateKeyObject) {
 }
 
 /**
- * Carrega a identidade do disco ou gera uma nova na primeira execução.
- * Mantém o mesmo formato de arquivo (identity.json com PEM) do protótipo
- * original, então uma identity.json já existente continua funcionando.
+ * Loads the identity from disk or generates a new one on first run.
+ * Keeps the same file format (identity.json with PEM) as the original
+ * prototype, so an existing identity.json keeps working.
  */
 function loadOrCreateIdentity(identityFile) {
   let pem
@@ -66,9 +65,9 @@ function loadOrCreateIdentity(identityFile) {
   const keyPair = toHypercoreKeyPair(publicKeyObject, privateKeyObject)
 
   return {
-    keyPair,               // { publicKey, secretKey } — usar para abrir o core próprio no Corestore
+    keyPair,               // { publicKey, secretKey } — use to open your own core in Corestore
     coreKey: typeof pem.coreKey === 'string' ? pem.coreKey : null,
-    publicKeyObject,       // KeyObject node:crypto, caso precise assinar algo fora do Hypercore
+    publicKeyObject,       // node:crypto KeyObject, in case you need to sign something outside Hypercore
     privateKeyObject
   }
 }

@@ -65,13 +65,13 @@ let myKey = null
 let currentProfile = null
 let pendingImage = null // { dataBase64, mime, name }
 let pendingLinks = [] // Links sendo editados no profile
-let currentFollowingList = [] // Cache da lista de seguindo com status
+let currentFollowingList = [] // Cache of the following list with status
 let statusUpdateInterval = null
-let profileCache = {} // Cache de perfis para evitar múltiplas requisições
-let currentViewingProfileKey = null // Chave do perfil sendo visualizado
+let profileCache = {} // Profile cache to avoid multiple requests
+let currentViewingProfileKey = null // Key of the profile being viewed
 
 // =====================================================================
-// UTILIDADES
+// UTILITIES
 // =====================================================================
 
 function shortKey(key) {
@@ -128,7 +128,7 @@ async function copyToClipboard(text, feedbackEl) {
 }
 
 // =====================================================================
-// RENDERIZAÇÃO
+// RENDERING
 // =====================================================================
 
 function renderIdentity(profile) {
@@ -177,7 +177,7 @@ async function refreshStatus() {
       ? 'nenhum peer conectado ainda'
       : `${count} peer${count === 1 ? '' : 's'} conectado${count === 1 ? '' : 's'}`
   } catch (err) {
-    // Ignora falhas transitórias (ex.: node null durante reset/quit)
+    // Ignores transient failures (e.g. node null during reset/quit)
   }
 }
 
@@ -189,7 +189,7 @@ function renderFollowing(list) {
   for (const peer of list) {
     const node = els.peerTemplate.content.cloneNode(true)
     
-    // Status dot (verde=online, escuro=offline)
+    // Status dot (green=online, dark=offline)
     const statusDot = node.querySelector('.peer-status-dot')
     const isOnline = peer.peersConectados > 0
     statusDot.classList.toggle('dot--online', isOnline)
@@ -228,7 +228,7 @@ function renderFeed(posts) {
     const authorEl = node.querySelector('.post-author')
     const isMe = post.autor === myKey
     
-    // Buscar nome do autor no cache ou usar chave curta
+    // Fetch the author's name from the cache or use the short key
     let authorName = isMe ? 'você' : shortKey(post.autor)
     const cachedProfile = profileCache[post.autor]
     if (cachedProfile && cachedProfile.nome) {
@@ -241,12 +241,12 @@ function renderFeed(posts) {
     
     if (!isMe) {
       authorEl.addEventListener('click', () => showProfileView(post.autor))
-      // Cache author profile quando clicar ou quando renderizar
+      // Cache the author profile when clicking or when rendering
       if (!profileCache[post.autor]) {
         window.p2p.getProfileOf(post.autor).then(p => {
           if (p) {
             profileCache[post.autor] = p
-            // Atualizar o nome exibido se o elemento ainda está visível
+            // Update the displayed name if the element is still visible
             const currentText = authorEl.textContent
             if (currentText === shortKey(post.autor)) {
               authorEl.textContent = p.nome || currentText
@@ -278,7 +278,7 @@ async function showProfileView(pubKeyHex) {
   try {
     currentViewingProfileKey = pubKeyHex
     
-    // Sempre buscar profile fresco (não usar cache antigo)
+    // Always fetch a fresh profile (don't use a stale cache)
     const profile = await window.p2p.getProfileOf(pubKeyHex)
     if (profile) profileCache[pubKeyHex] = profile
     
@@ -286,7 +286,7 @@ async function showProfileView(pubKeyHex) {
     
     if (!profile) {
       console.warn('Perfil não disponível ainda')
-      // Continuar mesmo sem profile, pode estar sincronizando
+      // Continue even without a profile, it may be syncing
     }
 
     // Hide feed and other views, show profile view
@@ -301,7 +301,7 @@ async function showProfileView(pubKeyHex) {
     const header = document.createElement('div')
     header.className = 'profile-view-header'
     
-    // Avatar - sempre mostrar (placeholder se não tiver)
+    // Avatar - always show (placeholder if none)
     const avatar = document.createElement('div')
     avatar.className = 'profile-view-avatar'
     if (profile.avatar) {
@@ -380,7 +380,7 @@ async function showProfileView(pubKeyHex) {
       postsFeed.className = 'feed'
       
       for (const post of posts.sort((a, b) => b.timestamp - a.timestamp)) {
-        // Filtrar apenas posts do usuário visualizado
+        // Filter to only the posts of the viewed user
         if (post.autor !== pubKeyHex) continue
         
         const node = els.postTemplate.content.cloneNode(true)
@@ -461,10 +461,10 @@ function renderFollowers(followers) {
     const nameSpan = document.createElement('span')
     nameSpan.className = 'follower-name'
     nameSpan.title = follower.publicKeyHex
-    // Inicialmente mostra a chave curta, depois busca o nome
+    // Initially shows the short key, then fetches the name
     nameSpan.textContent = shortKey(follower.publicKeyHex)
     
-    // Buscar o nome do seguidor de forma assíncrona
+    // Fetch the follower's name asynchronously
     ;(async () => {
       try {
         console.log('[renderFollowers] Buscando perfil de:', follower.publicKeyHex.slice(0, 12))
@@ -504,7 +504,7 @@ async function loadFeed() {
 }
 
 // =====================================================================
-// FORMULÁRIOS
+// FORMS
 // =====================================================================
 
 // Avatar Upload
@@ -535,7 +535,7 @@ els.myKey.addEventListener('click', async () => {
   await copyToClipboard(myKey, els.copyFeedback)
 })
 
-// Profile Form - Toggle (click nome para editar)
+// Profile Form - Toggle (click name to edit)
 els.myName.addEventListener('click', () => {
   els.profileForm.hidden = !els.profileForm.hidden
 })
@@ -644,7 +644,7 @@ els.profileForm.addEventListener('submit', async (evt) => {
       links: pendingLinks
     })
     renderIdentity(profile)
-    // Manter formulário visível após salvar
+    // Keep the form visible after saving
   } catch (err) {
     console.error('Erro ao atualizar perfil:', err)
   }
@@ -658,9 +658,9 @@ els.followForm.addEventListener('submit', async (evt) => {
   try {
     await window.p2p.follow(key)
     els.followKey.value = ''
-    // Limpar cache antigo do novo seguido para garantir dados frescos
+    // Clear the stale cache of the newly followed user to ensure fresh data
     delete profileCache[key]
-    // Buscar profile fresco
+    // Fetch a fresh profile
     const freshProfile = await window.p2p.getProfileOf(key)
     if (freshProfile) profileCache[key] = freshProfile
     await loadFollowing()
@@ -726,7 +726,7 @@ els.backToFeedFromSearchBtn.addEventListener('click', () => {
   els.searchResults.innerHTML = ''
 })
 
-// Search Button — busca TRANSITIVA pelo grafo de follows (amigos de amigos)
+// Search Button — TRANSITIVE search over the follow graph (friends of friends)
 els.searchBtn.addEventListener('click', async () => {
   const query = els.searchInput.value.trim()
   if (!query) return
@@ -739,7 +739,7 @@ els.searchBtn.addEventListener('click', async () => {
       return
     }
 
-    // Mapa chave → nome para rotular a relação ("via …")
+    // Map key → name to label the relationship ("via …")
     const keyToName = {}
     for (const p of results) if (p.nome) keyToName[p.publicKeyHex] = p.nome
     for (const p of currentFollowingList) if (p.nome) keyToName[p.publicKeyHex] = p.nome
@@ -870,7 +870,7 @@ window.p2p.on('following-changed', async () => {
   }
 })
 
-// O polling só pode começar depois que o fluxo de setup criou ou importou o nó.
+// The polling can only start after the setup flow created or imported the node.
 function startProfilePolling() {
   setInterval(async () => {
     try {
@@ -881,18 +881,18 @@ function startProfilePolling() {
             const profile = await window.p2p.getProfileOf(peer.publicKeyHex)
             if (profile) profileCache[peer.publicKeyHex] = profile
           } catch (err) {
-            // Silenciar erros de polling individual
+            // Silence individual polling errors
           }
         }
       }
     } catch (err) {
-      // Silenciar erros de polling geral
+      // Silence overall polling errors
     }
   }, 10000)
 }
 
 // =====================================================================
-// EVENTOS DO BACKEND
+// BACKEND EVENTS
 // =====================================================================
 
 window.p2p.on('feed-updated', loadFeed)
@@ -901,7 +901,7 @@ window.p2p.on('following-changed', () => { loadFollowing(); loadFeed() })
 window.p2p.on('peers-changed', () => {
   console.log('[peers-changed] evento disparado')
   refreshStatus()
-  // Se a aba de seguidores está visível, atualizar
+  // If the followers tab is visible, update it
   if (!els.tabContentFollowers.hidden) {
     console.log('[peers-changed] Aba de seguidores está visível, chamando loadFollowers()')
     loadFollowers()

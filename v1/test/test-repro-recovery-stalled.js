@@ -1,12 +1,12 @@
 'use strict'
 
-// Verifica o Fix 2 (detecção de seeder incompleto):
-//   1. A publica perfil + posts
-//   2. B carrega o core de A mas baixa SÓ PARTE dos blocos (simula um seeder
-//      parcial, como os criados antes do fix do _ensureFullDownload)
-//   3. A para (offline)
-//   4. O nó restaurado tenta recuperar de B -> NÃO deve travar em silêncio;
-//      deve emitir recovery-updated com state 'stalled'
+// Verifies Fix 2 (incomplete seeder detection):
+//   1. A publishes profile + posts
+//   2. B loads A's core but downloads ONLY PART of the blocks (simulates a
+//      partial seeder, like those created before the _ensureFullDownload fix)
+//   3. A stops (offline)
+//   4. The restored node tries to recover from B -> must NOT stall silently;
+//      it must emit recovery-updated with state 'stalled'
 
 const fs = require('node:fs')
 const os = require('node:os')
@@ -49,7 +49,7 @@ async function main() {
   await source.publishPost({ tipo: 'texto', texto: 'post parcial 2' })
   const sourceLength = source.myCore.length
 
-  // B entra no tópico de A (como seeder) mas baixa SÓ os blocos 2..len-1 (parcial)
+  // B joins A's topic (as a seeder) but downloads ONLY blocks 2..len-1 (partial)
   const entry = await seeder._loadFollowerData(source.myPublicKeyHex)
   const bCore = entry.core
   bCore.on('download', (i) => console.log(`[B:download-de-A] block=${i}`))
@@ -61,10 +61,10 @@ async function main() {
     console.log(`[setup] B tem bloco ${i} de A?`, await bCore.has(i))
   }
 
-  // A para (offline)
+  // A stops (offline)
   await source.stop()
 
-  // Restored tenta recuperar
+  // Restored tries to recover
   fs.copyFileSync(path.join(sourceDir, 'identity.json'), path.join(restoredDir, 'identity.json'))
 
   let states = []

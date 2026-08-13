@@ -6,8 +6,8 @@ const os = require('os')
 const { readIdentity, listUserKeys, userDataDir } = require('../src/user-data')
 
 /**
- * Script para limpar todos os dados do usuário (chaves, caches, perfil, posts, etc.)
- * e resetar a aplicação para o estado inicial.
+ * Script to clear all of the user's data (keys, caches, profile, posts, etc.)
+ * and reset the application to its initial state.
  */
 
 const dataRoots = [

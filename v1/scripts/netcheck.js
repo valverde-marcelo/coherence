@@ -2,24 +2,24 @@
 'use strict'
 
 // =====================================================================
-// Diagnóstico de conectividade P2P entre duas máquinas / redes.
+// P2P connectivity diagnostics between two machines / networks.
 //
-// Objetivo: isolar se o problema de comunicação é a camada P2P (NAT/firewall)
-// ou o próprio aplicativo. Usa apenas hyperswarm + corestore + hypercore
-// (o MESMO caminho de rede do app), sem interface/UI.
+// Goal: isolate whether the communication problem is the P2P layer (NAT/firewall)
+// or the application itself. Uses only hyperswarm + corestore + hypercore
+// (the SAME network path as the app), without any interface/UI.
 //
-// Uso:
-//   Máquina A (rede 1):  node scripts/netcheck.js seed
-//   Máquina B (rede 2):  node scripts/netcheck.js probe <chave-hex-64> [timeoutSeg]
+// Usage:
+//   Machine A (network 1):  node scripts/netcheck.js seed
+//   Machine B (network 2):  node scripts/netcheck.js probe <hex-key-64> [timeoutSec]
 //
-// - O "seed" cria um core com um payload, anuncia o tópico e fica de pé.
-// - O "probe" tenta encontrar o seeder, conectar e baixar o payload.
+// - The "seed" creates a core with a payload, announces the topic and stays up.
+// - The "probe" tries to find the seeder, connect and download the payload.
 //
-// Resultado:
-//   PROBE "OK"           -> a camada P2P funciona entre as redes; o problema
-//                           está no app/config (abrir instâncias, chaves etc.).
-//   PROBE "FALHOU"       -> NAT/firewall bloqueando o hole-punching. Veja as
-//                           checagens no final do arquivo.
+// Result:
+//   PROBE "OK"           -> the P2P layer works between the networks; the problem
+//                           is in the app/config (opening instances, keys etc.).
+//   PROBE "FAILED"       -> NAT/firewall blocking hole punching. See the
+//                           checks at the end of the file.
 // =====================================================================
 
 const fs = require('node:fs')
@@ -36,7 +36,7 @@ function tmpDir(name) {
 }
 
 // ---------------------------------------------------------------------
-// MODO SEED — anuncia um core com payload e fica esperando peers
+// SEED MODE — announces a core with a payload and waits for peers
 // ---------------------------------------------------------------------
 async function seed(payload) {
   const store = new Corestore(path.join(tmpDir('netcheck-seed'), 'corestore'))
@@ -67,7 +67,7 @@ async function seed(payload) {
 }
 
 // ---------------------------------------------------------------------
-// MODO PROBE — tenta achar o seeder, conectar e baixar o payload
+// PROBE MODE — tries to find the seeder, connect and download the payload
 // ---------------------------------------------------------------------
 async function probe(keyHex, timeoutMs) {
   if (!/^[0-9a-f]{64}$/i.test(keyHex)) {

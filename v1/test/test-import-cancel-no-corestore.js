@@ -1,18 +1,18 @@
 'use strict'
 
 // ====================================================================
-// Teste do bug de "novo usuário com chave antiga importada":
+// Test of the "new user with an old imported key" bug:
 //
-// A) Importar uma identidade SEM seeder e cancelar (parar o nó) NÃO pode
-//    deixar a pasta `corestore` no diretório do usuário — senão o próximo
-//    início trataria o usuário como estabelecido e criaria um perfil novo
-//    com a chave importada (o bug relatado).
-//    Verifica também que a pasta temporária de recuperação é removida e
-//    que o marcador `recovered.json` NÃO é gravado.
+// A) Importing an identity WITHOUT a seeder and canceling (stopping the node)
+//    must NOT leave the `corestore` folder in the user's directory — otherwise
+//    the next start would treat the user as established and create a new
+//    profile with the imported key (the reported bug).
+//    Also verifies that the temporary recovery folder is removed and that the
+//    `recovered.json` marker is NOT written.
 //
-// B) Importar uma identidade COM seeder recupera os dados e SÓ ENTÃO
-//    promove o storage temporário para `corestore`, grava o marcador e
-//    reabre o core para escrita (novo post funciona).
+// B) Importing an identity WITH a seeder recovers the data and ONLY THEN
+//    promotes the temporary storage to `corestore`, writes the marker and
+//    reopens the core for writing (a new post works).
 // ====================================================================
 
 const fs = require('node:fs')
@@ -39,20 +39,20 @@ async function waitUntil(check, { timeout = 15000, interval = 150 } = {}) {
   const testnet = await createTestnet(3)
   const results = {}
 
-  // ============ A) Importar sem seeder e cancelar ============
+  // ============ A) Import without a seeder and cancel ============
   const importDir = tmpDir('import-cancel')
   const abandoned = new P2PNode({ dataDir: importDir, swarmOpts: { dht: testnet.createNode() } })
   await abandoned.start({ recovery: true })
   await new Promise((resolve) => setTimeout(resolve, 1200))
   const wasWaiting = abandoned.lifecycleState === 'recovery'
-  await abandoned.stop() // simula o botão "cancelar"
+  await abandoned.stop() // simulates the "cancel" button
 
   results.noCorestore = !fs.existsSync(path.join(importDir, 'corestore'))
   results.tempCleaned = !fs.existsSync(path.join(importDir, 'corestore.recovery'))
   results.identityPreserved = fs.existsSync(path.join(importDir, 'identity.json'))
   results.notMarked = !isRecovered(importDir)
 
-  // ============ B) Importar e recuperar de um seeder ============
+  // ============ B) Import and recover from a seeder ============
   const sourceDir = tmpDir('import-source')
   const seederDir = tmpDir('import-seeder')
   const restoredDir = tmpDir('import-restored')
@@ -65,7 +65,7 @@ async function waitUntil(check, { timeout = 15000, interval = 150 } = {}) {
   await seeder.follow(source.myPublicKeyHex)
 
   const sourceLength = source.myCore.length
-  // Espera o seeder baixar o histórico completo da fonte (padrão do test-identity-recovery).
+  // Waits for the seeder to download the source's full history (pattern from test-identity-recovery).
   const seeded = await waitUntil(() =>
     seeder.followed.has(source.myPublicKeyHex) &&
     seeder.followed.get(source.myPublicKeyHex).core.length >= sourceLength
@@ -78,8 +78,8 @@ async function waitUntil(check, { timeout = 15000, interval = 150 } = {}) {
   fs.copyFileSync(path.join(sourceDir, 'identity.json'), path.join(restoredDir, 'identity.json'))
   const restored = new P2PNode({ dataDir: restoredDir, swarmOpts: { dht: testnet.createNode() } })
   await restored.start({ recovery: true })
-  // NÃO usar `await restored.recoveryPromise` diretamente (ele pode ficar aguardando
-  // para sempre se o seeder estiver offline): espera com timeout a recuperação concluir.
+  // Do NOT use `await restored.recoveryPromise` directly (it can wait forever if
+  // the seeder is offline): wait for recovery to finish with a timeout.
   const recovered = await waitUntil(() => restored.lifecycleState === 'ready', { timeout: 20000 })
   if (!recovered) await restored.stop().catch(() => {})
 

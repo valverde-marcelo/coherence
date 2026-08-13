@@ -1,9 +1,9 @@
 'use strict'
 
-// Testa o fluxo completo (seguir + sincronizar) entre dois nós, usando uma
-// DHT local isolada (hyperdht/testnet) — não depende da internet real, mas
-// exercita o MESMO caminho de código (Hyperswarm + Corestore.replicate)
-// que será usado em produção.
+// Tests the full flow (follow + sync) between two nodes, using an isolated
+// local DHT (hyperdht/testnet) — it doesn't depend on the real internet, but
+// exercises the SAME code path (Hyperswarm + Corestore.replicate)
+// that will be used in production.
 
 const fs = require('node:fs')
 const os = require('node:os')
@@ -57,7 +57,7 @@ async function waitUntil(check, { timeout = 8000, interval = 100 } = {}) {
   const aliceProfileFromBob = await bob.getProfile(alice.myPublicKeyHex)
   console.log('Perfil da Alice, visto pelo Bob:', aliceProfileFromBob)
 
-  // Alice publica um post NOVO depois que Bob já a seguia -> deve chegar via 'append'
+  // Alice publishes a NEW post after Bob already followed her -> must arrive via 'append'
   await alice.publishPost({ tipo: 'texto', texto: 'Terceiro post, publicado depois do follow.' })
   const gotThird = await waitUntil(async () => {
     const feed = await bob.getFeed()
@@ -65,7 +65,7 @@ async function waitUntil(check, { timeout = 8000, interval = 100 } = {}) {
   })
   console.log('Post publicado após o follow chegou em tempo real?', gotThird)
 
-  // Verificar que Alice registrou Bob como seguidor
+  // Verify that Alice registered Bob as a follower
   const aliceFollowers = await waitUntil(async () => {
     const followers = await alice.getFollowers()
     return followers.length === 1

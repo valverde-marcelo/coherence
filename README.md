@@ -1,194 +1,194 @@
-# Coherence - Rede Social P2P Distribuída
+# Coherence - Distributed P2P Social Network
 
-Uma rede social distribuída baseada em tecnologia P2P (peer-to-peer) utilizando **Hyperswarm**, **Hypercore** e **Hyperbee**. Sem servidores centralizados, sem censura, sem dados coletados.
+A distributed social network built on P2P (peer-to-peer) technology using **Hyperswarm**, **Hypercore**, and **Hyperbee**. No centralized servers, no censorship, no data collection.
 
-## 🌍 Visão Geral
+## 🌍 Overview
 
-**Coherence** é uma plataforma de rede social onde:
-- Cada usuário controla seus próprios dados
-- Todos os dados são criptograficamente assinados (Ed25519)
-- Conexões P2P diretas entre peers via Hyperswarm
-- Dados replicados em múltiplas máquinas automaticamente
-- Interface desktop com Electron
+**Coherence** is a social network platform where:
+- Each user controls their own data
+- All data is cryptographically signed (Ed25519)
+- Direct P2P connections between peers via Hyperswarm
+- Data is automatically replicated across multiple machines
+- Desktop interface built with Electron
 
-## 🚀 Características
+## 🚀 Features
 
-- ✅ **Identidade Descentralizada**: Cada usuário gera seu próprio keypair Ed25519
-- ✅ **Posts Imutáveis**: Todos os posts assinados e armazenados em Hypercores
-- ✅ **Perfil Distribuído**: Nome, bio, avatar e links salvos em Hyperbee
-- ✅ **Sistema de Seguir/Deixar de Seguir**: Seguidores são detectados via conexões P2P
-- ✅ **Descoberta de Peers**: Automaticamente descobre e conecta com usuários seguidos
-- ✅ **Interface Intuitiva**: 3 colunas (Perfil, Feed, Seguidores) em Electron
-- ✅ **Persistência**: Dados salvos localmente em `~/Documents/coherence-data/`
+- ✅ **Decentralized Identity**: Each user generates their own Ed25519 keypair
+- ✅ **Immutable Posts**: All posts are signed and stored in Hypercores
+- ✅ **Distributed Profile**: Name, bio, avatar, and links saved in Hyperbee
+- ✅ **Follow/Unfollow System**: Followers are detected via P2P connections
+- ✅ **Peer Discovery**: Automatically discovers and connects with followed users
+- ✅ **Intuitive Interface**: 3 columns (Profile, Feed, Followers) in Electron
+- ✅ **Persistence**: Data saved locally in `~/Documents/coherence-data/`
 
-## 📁 Estrutura do Projeto
+## 📁 Project Structure
 
 ```
 coherence/
-├── v0/                          # Prototipo inicial
+├── v0/                          # Initial prototype
 │   ├── app-p2p.js
 │   └── package.json
-├── v1/                          # Versão atual (Electron + UI)
-│   ├── main.js                  # Processo principal Electron
-│   ├── preload.js               # Bridge IPC seguro
+├── v1/                          # Current version (Electron + UI)
+│   ├── main.js                  # Electron main process
+│   ├── preload.js               # Secure IPC bridge
 │   ├── src/
-│   │   ├── p2p-node.js          # Núcleo P2P (Hyperswarm/Hypercore/Hyperbee)
-│   │   └── identity.js          # Geração e gestão de keypairs
+│   │   ├── p2p-node.js          # P2P core (Hyperswarm/Hypercore/Hyperbee)
+│   │   └── identity.js          # Keypair generation and management
 │   ├── renderer/
-│   │   ├── index.html           # Interface (3 colunas)
-│   │   ├── renderer.js          # Lógica frontend
-│   │   └── styles.css           # Estilos CSS
-│   ├── test/                    # Testes de integração
+│   │   ├── index.html           # UI (3 columns)
+│   │   ├── renderer.js          # Frontend logic
+│   │   └── styles.css           # CSS styles
+│   ├── test/                    # Integration tests
 │   ├── scripts/
-│   │   └── reset.js             # Script para resetar dados
+│   │   └── reset.js             # Script to reset data
 │   └── package.json
-├── docs/                        # Landing page GitHub Pages
+├── docs/                        # GitHub Pages landing page
 └── README.md
 ```
 
-## 🛠️ Tecnologia
+## 🛠️ Technology
 
-| Componente | Tecnologia | Propósito |
+| Component | Technology | Purpose |
 |-----------|-----------|----------|
-| **P2P Network** | Hyperswarm | Descoberta e conexão entre peers |
-| **Armazenamento** | Hypercore | Logs imutáveis e criptografados |
-| **Índice** | Hyperbee | Estrutura de dados distribuída (B-tree) |
-| **Desktop** | Electron | Interface nativa multiplataforma |
-| **Criptografia** | Ed25519 | Assinatura digital de dados |
+| **P2P Network** | Hyperswarm | Peer discovery and connection |
+| **Storage** | Hypercore | Immutable, cryptographically signed logs |
+| **Index** | Hyperbee | Distributed data structure (B-tree) |
+| **Desktop** | Electron | Cross-platform native UI |
+| **Cryptography** | Ed25519 | Digital data signing |
 
-## 📦 Instalação
+## 📦 Installation
 
-### Requisitos
+### Requirements
 - Node.js 16+
-- npm ou yarn
+- npm or yarn
 
 ### Setup
 
 ```bash
-# Clonar repositório
+# Clone the repository
 git clone https://github.com/valverde-marcelo/coherence.git
 cd coherence/v1
 
-# Instalar dependências
+# Install dependencies
 npm install
 
-# Iniciar aplicação
+# Start the application
 npm start
 ```
 
-## 🎮 Uso
+## 🎮 Usage
 
-### Primeira Execução
-1. Abra a aplicação com `npm start`
-2. Na primeira execução, escolha o idioma e importe uma identidade ou crie uma nova conta
-3. Edite seu perfil (bio, avatar, links)
-4. Comece a postar!
+### First Run
+1. Launch the app with `npm start`
+2. On first run, choose the language and import an identity or create a new account
+3. Edit your profile (bio, avatar, links)
+4. Start posting!
 
-### Seguir Usuários
-1. Cole a chave pública de um amigo na aba "Seguindo"
-2. Você será conectado automaticamente quando ambos estiverem online
-3. Seus posts e perfil serão replicados
+### Following Users
+1. Paste a friend's public key into the "Following" tab
+2. You will be connected automatically when both are online
+3. Your posts and profile will be replicated
 
-### Ver Seguidores
-1. Clique na aba "Seguidores" na barra lateral direita
-2. Todos que se conectaram ao seu node aparecerão
-3. Clique no nome para visualizar o perfil completo
+### Viewing Followers
+1. Click the "Followers" tab in the right sidebar
+2. Everyone who connected to your node will appear
+3. Click a name to view the full profile
 
-## 🔄 Sincronização de Dados
+## 🔄 Data Synchronization
 
-Os dados são replicados através:
+Data is replicated through:
 
-1. **Replicação Automática**: Quando dois peers conectam, dados são sincronizados
-2. **Polling Inteligente**: Atualização de perfis e posts a cada 10 segundos
-3. **Detecção de Peers**: Novos seguidores são detectados em tempo real
-4. **Persistência Local**: Tudo é salvo em `~/Documents/coherence-data/`
+1. **Automatic Replication**: When two peers connect, data is synchronized
+2. **Smart Polling**: Profile and post updates every 10 seconds
+3. **Peer Detection**: New followers are detected in real time
+4. **Local Persistence**: Everything is saved in `~/Documents/coherence-data/`
 
-## 🧪 Testes
+## 🧪 Tests
 
 ```bash
-# Executar suite de testes
+# Run the test suite
 npm test
 
-# Testes incluem:
-# - test-posts-and-unfollow.js      → Posts e deixar de seguir
-# - test-integration-follow-sync.js  → Sincronização de seguimento
-# - test-integration-seeding.js      → Seeding de dados
-# - test-persistence.js              → Persistência de dados
-# - test-restart-after-stop-race.js  → Restart durante leitura concorrente
-# - test-identity-recovery.js        → Recuperação usando apenas identity.json
-# - test-recovery-timeout.js         → Timeout e fallback para core novo
+# Tests include:
+# - test-posts-and-unfollow.js      → Posts and unfollowing
+# - test-integration-follow-sync.js  → Follow synchronization
+# - test-integration-seeding.js      → Data seeding
+# - test-persistence.js              → Data persistence
+# - test-restart-after-stop-race.js  → Restart during concurrent reads
+# - test-identity-recovery.js        → Recovery using only identity.json
+# - test-recovery-timeout.js         → Timeout and fallback to a new core
 ```
 
-## 🔐 Privacidade & Segurança
+## 🔐 Privacy & Security
 
-- **Sem Servidor Central**: Dados não são centralizados
-- **Criptografia End-to-End**: Dados assinados com Ed25519
-- **Controle Total**: Você controla seus dados completamente
-- **Privacidade por Design**: Peers só podem ler dados que você compartilha
+- **No Central Server**: Data is not centralized
+- **End-to-End Encryption**: Data is signed with Ed25519
+- **Full Control**: You have complete control over your data
+- **Privacy by Design**: Peers can only read data you share
 
-**Nota**: Um peer pode ler seu perfil e posts se souber sua chave pública. Isso é por design - você escolhe com quem compartilhar sua chave.
+**Note**: A peer can read your profile and posts if they know your public key. This is by design - you choose who you share your key with.
 
-### Recuperar uma identidade
+### Recovering an identity
 
-Exporte e guarde o arquivo `identity.json`. Em outra instalação, importe apenas esse
-arquivo. O aplicativo aguardará um seeder que tenha o seu Hypercore para recuperar perfil,
-posts e seguidores. Se nenhum seeder aparecer dentro do timeout, você poderá começar do
-zero mantendo a mesma identidade.
+Export and keep the `identity.json` file. On another installation, import only that
+file. The app will wait for a seeder that has your Hypercore to recover your profile,
+posts, and followers. If no seeder appears within the timeout, you can start from
+scratch while keeping the same identity.
 
-## 💾 Reset Completo
+## 💾 Full Reset
 
-Para limpar todos os dados e começar do zero:
+To clear all data and start from scratch:
 
 ```bash
 npm run reset
 npm start
 ```
 
-Isso removes:
-- Identidade (keypair)
-- Todos os posts
-- Perfil
-- Lista de seguimento
+This removes:
+- Identity (keypair)
+- All posts
+- Profile
+- Following list
 - Cache
 
 ## 🐛 Debugging
 
-Logs são exibidos no console durante execução:
+Logs are printed to the console during execution:
 
 ```
-[swarm:connection] Socket conectado de peer: ...
-[getProfile] Buscando perfil de: ...
-[getFollowers] Retornando X seguidores
+[swarm:connection] Socket connected from peer: ...
+[getProfile] Fetching profile from: ...
+[getFollowers] Returning X followers
 ```
 
 ## 📝 Roadmap
 
-- [ ] Web UI (Além de Electron)
-- [ ] Suporte a media (imagens/vídeos)
-- [ ] Sistema de reações/curtidas
-- [ ] Notificações em tempo real
-- [ ] Busca distribuída
-- [ ] DHT melhorado
+- [ ] Web UI (beyond Electron)
+- [ ] Media support (images/videos)
+- [ ] Reactions/likes system
+- [ ] Real-time notifications
+- [ ] Distributed search
+- [ ] Improved DHT
 - [ ] Mobile app (React Native)
 
-## 📄 Licença
+## 📄 License
 
-MIT - Veja [LICENSE](LICENSE) para detalhes
+MIT - See [LICENSE](LICENSE) for details
 
-## 🤝 Contribuindo
+## 🤝 Contributing
 
-Contribuições são bem-vindas! Por favor:
+Contributions are welcome! Please:
 
-1. Fork o projeto
-2. Crie uma branch para sua feature (`git checkout -b feature/AmazingFeature`)
-3. Commit suas mudanças (`git commit -m 'Add AmazingFeature'`)
-4. Push para a branch (`git push origin feature/AmazingFeature`)
-5. Abra um Pull Request
+1. Fork the project
+2. Create a branch for your feature (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
 
-## 📧 Contato
+## 📧 Contact
 
-Para dúvidas ou sugestões, abra uma issue no repositório.
+For questions or suggestions, open an issue in the repository.
 
 ---
 
-**Coherence** - Comunicação descentralizada, sem limites. 🌐
+**Coherence** - Decentralized communication, without limits. 🌐

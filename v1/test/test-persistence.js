@@ -23,7 +23,7 @@ async function waitUntil(check, timeout = 10000) {
   const testnet = await createTestnet(2)
   const dataDir = tmpDir('restart-test')
 
-  // "sessão 1": cria identidade, publica post, segue alguém
+  // "session 1": creates identity, publishes a post, follows someone
   const friend = new P2PNode({ dataDir: tmpDir('friend'), swarmOpts: { dht: testnet.createNode() } })
   await friend.start()
   await friend.publishPost({ tipo: 'texto', texto: 'oi' })
@@ -40,7 +40,7 @@ async function waitUntil(check, timeout = 10000) {
   })
   await node.stop()
 
-  // "sessão 2": processo reaberto, mesmo dataDir
+  // "session 2": process reopened, same dataDir
   node = new P2PNode({ dataDir, swarmOpts: { dht: testnet.createNode() } })
   await node.start()
 

@@ -1,20 +1,20 @@
 'use strict'
 
 // =====================================================================
-// Busca TRANSITIVA de usuários pelo grafo de follows.
+// TRANSITIVE user search over the follow graph.
 //
-// Cenário: Alice → Bob → Carol → Dave
-//   (Alice segue Bob, Bob segue Carol, Carol segue Dave)
+// Scenario: Alice → Bob → Carol → Dave
+//   (Alice follows Bob, Bob follows Carol, Carol follows Dave)
 //
-// A partir de Alice deve ser possível localizar os outros usuários, pois há
-// um ponto em comum: Bob.followList=[Carol] (local na Alice) e, abrindo o
-// core da Carol, Carol.followList=[Dave].
+// From Alice it must be possible to locate the other users, since there is
+// a common point: Bob.followList=[Carol] (local on Alice) and, opening
+// Carol's core, Carol.followList=[Dave].
 //
-//   - Alice acha Bob    (grau 1, seguindo)
-//   - Alice acha Carol  (grau 2, via Bob)
-//   - Alice acha Dave   (grau 3, via Carol)
+//   - Alice finds Bob    (degree 1, following)
+//   - Alice finds Carol  (degree 2, via Bob)
+//   - Alice finds Dave   (degree 3, via Carol)
 //
-// Uso: node test/test-search-transitive.js
+// Usage: node test/test-search-transitive.js
 // =====================================================================
 
 const fs = require('node:fs')
@@ -54,12 +54,12 @@ async function waitUntil(check, { timeout = 30000, interval = 200 } = {}) {
     await carol.updateMyProfile({ nome: 'Carol', bio: 'remota 2' })
     await dave.updateMyProfile({ nome: 'Dave', bio: 'remoto 3' })
 
-    // Cadeia: Alice segue Bob, Bob segue Carol, Carol segue Dave
+    // Chain: Alice follows Bob, Bob follows Carol, Carol follows Dave
     await bob.follow(carol.myPublicKeyHex)
     await carol.follow(dave.myPublicKeyHex)
     await alice.follow(bob.myPublicKeyHex)
 
-    // Alice acha Carol (grau 2, via Bob) — tenta com retry (conexões P2P)
+    // Alice finds Carol (degree 2, via Bob) — tries with retry (P2P connections)
     const foundCarol = await waitUntil(async () => {
       const results = await alice.searchUsers('Carol')
       return results.some((r) => r.publicKeyHex === carol.myPublicKeyHex)
@@ -73,7 +73,7 @@ async function waitUntil(check, { timeout = 30000, interval = 200 } = {}) {
     }, { timeout: 40000 })
     console.log('Alice achou Dave?', foundDave)
 
-    // Detalhes (depth/via) — BFS: Carol em grau 2 via Bob; Dave em grau 3 via Carol
+    // Details (depth/via) — BFS: Carol at degree 2 via Bob; Dave at degree 3 via Carol
     const carolResults = await alice.searchUsers('Carol')
     const carolHit = carolResults.find((r) => r.publicKeyHex === carol.myPublicKeyHex)
     console.log('Carol:', carolHit ? `depth=${carolHit.depth} via=${(carolHit.via || '').slice(0, 8)}` : 'n/a')
@@ -82,9 +82,9 @@ async function waitUntil(check, { timeout = 30000, interval = 200 } = {}) {
     const daveHit = daveResults.find((r) => r.publicKeyHex === dave.myPublicKeyHex)
     console.log('Dave:', daveHit ? `depth=${daveHit.depth} via=${(daveHit.via || '').slice(0, 8)}` : 'n/a')
 
-    // DAVE também deve encontrar os outros (travessia ao CONTRÁRIO):
-    // Dave → Carol (seguidora) → seguidores da Carol=[Bob] → seguidores do Bob=[Alice].
-    // Depende de a Carol ter registrado o Bob e o Bob ter registrado a Alice.
+    // DAVE must also find the others (REVERSE traversal):
+    // Dave → Carol (follower) → Carol's followers=[Bob] → Bob's followers=[Alice].
+    // Depends on Carol having registered Bob and Bob having registered Alice.
     const carolRecordedBob = await waitUntil(async () => {
       const followers = await carol.getFollowers()
       return followers.some((f) => f.publicKeyHex === bob.myPublicKeyHex)
@@ -109,7 +109,7 @@ async function waitUntil(check, { timeout = 30000, interval = 200 } = {}) {
     }, { timeout: 40000 })
     console.log('Dave achou Alice?', daveFindsAlice)
 
-    // Também casa por bio e por prefixo de chave
+    // Also matches by bio and by key prefix
     const byBio = await alice.searchUsers('remota')
     console.log('Busca por bio "remota":', byBio.map((r) => r.nome).join(', ') || '(nenhum)')
     const byKey = await alice.searchUsers(carol.myPublicKeyHex.slice(0, 10))

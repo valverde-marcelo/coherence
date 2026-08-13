@@ -26,13 +26,13 @@ let quitting = false
 let shuttingDown = false
 
 // =====================================================================
-// Proteção contra "EPIPE: broken pipe" ao logar
+// Protection against "EPIPE: broken pipe" when logging
 // =====================================================================
-// Quando o app é lançado pelo start-all (ou roda num terminal que é
-// fechado), o stdout/stderr pode virar um pipe quebrado. Nesse caso, um
-// console.log() lança EPIPE como exceção NÃO capturada no processo main —
-// e o Electron abre um popup de "Error". Aqui garantimos que console.log/
-// error nunca lance: erros de escrita são silenciosamente ignorados.
+// When the app is launched by start-all (or runs in a terminal that gets
+// closed), stdout/stderr can become a broken pipe. In that case, a
+// console.log() throws EPIPE as an UNCAUGHT exception in the main process —
+// and Electron opens an "Error" popup. Here we ensure console.log/error never
+// throws: write errors are silently ignored.
 for (const method of ['log', 'info', 'warn', 'error', 'debug']) {
   const original = console[method].bind(console)
   console[method] = (...args) => {
@@ -40,19 +40,19 @@ for (const method of ['log', 'info', 'warn', 'error', 'debug']) {
       original(...args)
     } catch (err) {
       if (err && (err.code === 'EPIPE' || err.code === 'ERR_STREAM_DESTROYED')) {
-        // Saída indisponível — nada a fazer além de não quebrar o app.
+        // Output unavailable — nothing to do besides not breaking the app.
       } else {
-        // Não era um problema de pipe: repassa para não esconder erros reais.
-        try { original(err) } catch { /* ignora */ }
+        // Not a pipe problem: rethrow to avoid hiding real errors.
+        try { original(err) } catch { /* ignore */ }
       }
     }
   }
 }
-// O stream também pode emitir 'error' (ex.: EPIPE) — sem listener isso viraria
-// uma exceção não capturada. Ignoramos silenciosamente.
+// The stream can also emit 'error' (e.g. EPIPE) — without a listener this
+// would become an uncaught exception. We ignore it silently.
 for (const stream of [process.stdout, process.stderr]) {
   if (stream && typeof stream.on === 'function') {
-    stream.on('error', () => { /* saída indisponível — ignora */ })
+    stream.on('error', () => { /* output unavailable — ignore */ })
   }
 }
 
@@ -182,8 +182,8 @@ async function startNode({ recovery = false } = {}) {
 
 function stopNode() {
   const operation = nodeLifecycle.then(async () => {
-    // Marca o shutdown: o forward() para de repassar eventos ao renderer e os
-    // handlers IPC retornam valores padrão enquanto `node` estiver nulo.
+    // Marks the shutdown: forward() stops relaying events to the renderer and
+    // the IPC handlers return default values while `node` is null.
     shuttingDown = true
     if (statusUpdateInterval) {
       clearInterval(statusUpdateInterval)
@@ -199,10 +199,10 @@ function stopNode() {
 }
 
 /**
- * Remove a pasta de um usuário cuja identidade foi importada mas NUNCA recuperada
- * (cancelar/fechar durante a recuperação, ou "começar do zero"). Ela contém apenas
- * o identity.json copiado + corestore parcial/temporário + settings. Nunca remove
- * a raiz (dataRoot), para não apagar outros usuários locais.
+ * Removes a user's folder whose identity was imported but NEVER recovered
+ * (cancel/close during recovery, or "start from scratch"). It contains only
+ * the copied identity.json + partial/temporary corestore + settings. Never
+ * removes the root (dataRoot), so other local users are not deleted.
  */
 function removePendingImport() {
   if (!dataDir || dataDir === dataRoot) return
@@ -215,9 +215,9 @@ function removePendingImport() {
 }
 
 /**
- * Gera uma identidade NOVA (par Ed25519), grava em um diretório próprio e inicia o nó.
- * Usado tanto para "criar usuário" (com nome) quanto para "começar do zero" (sem nome),
- * que agora DESCARTAR a identidade importada não recuperada.
+ * Generates a NEW identity (Ed25519 keypair), writes it in its own directory and
+ * starts the node. Used both for "create user" (with a name) and for "start from
+ * scratch" (without a name), which now DISCARDS the unrecovered imported identity.
  */
 async function createNewUserIdentity(username) {
   const crypto = require('node:crypto')
@@ -253,11 +253,11 @@ async function createWindow() {
   await mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'))
 }
 
-// Encaminha eventos do P2PNode para a janela, como updates de feed/perfil.
+// Forwards P2PNode events to the window, such as feed/profile updates.
 function forward(channel) {
   return (...args) => {
-    // Durante shutdown (reset/quit) não repassa eventos: o renderer ainda está
-    // vivo e reagiria chamando handlers IPC com `node` já nulo.
+    // During shutdown (reset/quit) do not relay events: the renderer is still
+    // alive and would react by calling IPC handlers with `node` already null.
     if (!shuttingDown && mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send(channel, ...args)
     }
@@ -265,9 +265,9 @@ function forward(channel) {
 }
 
 function registerIpcHandlers() {
-  // Guards: durante reset/quit o `node` pode estar null enquanto o renderer
-  // ainda faz chamadas (ex.: reação a peers-changed do shutdown). Retornam
-  // valores padrão em vez de lançar TypeError no processo main.
+  // Guards: during reset/quit the `node` can be null while the renderer still
+  // makes calls (e.g. reacting to peers-changed from shutdown). They return
+  // default values instead of throwing a TypeError in the main process.
   ipcMain.handle('p2p:get-my-key', () => node ? node.myPublicKeyHex : null)
   ipcMain.handle('p2p:get-profile', () => node ? node.getMyProfile() : null)
   ipcMain.handle('p2p:update-profile', (_evt, patch) => node ? node.updateMyProfile(patch) : null)
@@ -308,9 +308,9 @@ function registerIpcHandlers() {
   ipcMain.handle('setup:start-app', async () => {
     const hasIdentity = fs.existsSync(path.join(dataDir, 'identity.json'))
     const publicKeyHex = await startNode({
-      // Só entra em recuperação se NÃO houver dados locais estabelecidos.
-      // Um usuário com corestore local íntegro inicia direto — mesmo que o
-      // marcador recovered.json tenha se perdido (ex.: conflito de sync).
+      // Only enters recovery if there are NO established local data.
+      // A user with a sound local corestore starts directly — even if the
+      // recovered.json marker was lost (e.g. sync conflict).
       recovery: hasIdentity && !isEstablished(dataDir)
     })
     return { publicKeyHex, state: node.lifecycleState }
@@ -328,8 +328,8 @@ function registerIpcHandlers() {
   })
   ipcMain.handle('setup:start-from-zero', async () => {
     await stopNode()
-    // Abandona a identidade importada não recuperada: descarta a pasta pendente
-    // e gera uma identidade NOVA (nunca reutiliza a chave importada).
+    // Discards the unrecovered imported identity: drops the pending folder
+    // and generates a NEW identity (never reuses the imported key).
     removePendingImport()
     const publicKeyHex = await createNewUserIdentity()
     return { publicKeyHex, state: node.lifecycleState }
@@ -337,8 +337,8 @@ function registerIpcHandlers() {
   ipcMain.handle('setup:cancel-recovery', async () => {
     const wasRecovery = node && node.lifecycleState === 'recovery'
     await stopNode()
-    // Só remove a pasta se a identidade importada NUNCA foi recuperada; se a
-    // recuperação já tinha concluído (state 'ready'), os dados são preservados.
+    // Only removes the folder if the imported identity was NEVER recovered; if
+    // recovery had already completed (state 'ready'), the data is preserved.
     if (wasRecovery) removePendingImport()
     app.quit()
     return { success: true }
@@ -400,7 +400,7 @@ async function main() {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
 
-  // Limpar polling ao fechar
+  // Clear the polling when closing
   mainWindow.on('closed', () => {
     clearInterval(statusUpdateInterval)
   })
@@ -410,8 +410,8 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
 })
 
-// Fecha o swarm e o Corestore com cuidado antes de sair, para não corromper
-// o storage local.
+// Closes the swarm and Corestore carefully before exiting, to avoid corrupting
+// the local storage.
 app.on('before-quit', (event) => {
   if (quitting || (!node && !statusUpdateInterval)) return
   event.preventDefault()
