@@ -94,11 +94,14 @@ class P2PNode extends EventEmitter {
    * @param {string} opts.dataDir - pasta onde ficam identity.json e o storage do Corestore
    * @param {number} [opts.readTimeoutMs] - timeout ao ler dados de peers seguidos
    */
-  constructor({ dataDir, readTimeoutMs = 4000, recoveryTimeoutMs = 90000, swarmOpts = {} }) {
+  constructor({ dataDir, readTimeoutMs = 4000, recoveryTimeoutMs = 90000, recoveryDownloadTimeoutMs = 15000, swarmOpts = {} }) {
     super()
     this.dataDir = dataDir
     this.readTimeoutMs = readTimeoutMs
     this.recoveryTimeoutMs = recoveryTimeoutMs
+    // Janela de espera por blocos em cada tentativa de download da recuperação.
+    // Menor nos testes para detectar stall mais rápido; 15s no app.
+    this.recoveryDownloadTimeoutMs = recoveryDownloadTimeoutMs
     this.swarmOpts = swarmOpts
     this.identityFile = path.join(dataDir, 'identity.json')
     this.storageDir = path.join(dataDir, 'corestore')
@@ -307,6 +310,21 @@ class P2PNode extends EventEmitter {
           if (firstLine.startsWith('{')) {
             const msg = JSON.parse(firstLine)
             if (msg.type === 'follow-request' && msg.identityKey && msg.identityKey.length === 64) {
+              // Só registra como seguidor se o pedido for PARA ESTE nó. O
+              // emissor envia o follow-request a todos os peers conectados ao
+              // core seguido (não só ao dono) — sem checar o targetKey, um nó
+              // que apenas replica o mesmo core registraria seguidores que
+              // nunca o seguiram (ex.: Alice segue Bob; Carol replica o core
+              // de Bob; Alice viraria "seguidora" de Carol sem ter seguido).
+              const targetKey = msg.targetKey
+              if (!targetKey) {
+                console.log('[swarm:connection:follow-request] ⚠️ follow-request sem targetKey (versão antiga?); ignorado de:', msg.identityKey.slice(0, 16))
+                return true
+              }
+              if (targetKey !== this.myPublicKeyHex) {
+                console.log('[swarm:connection:follow-request] ⚠️ Ignorado (não é para mim): de', msg.identityKey.slice(0, 16), 'para', targetKey.slice(0, 16))
+                return true
+              }
               console.log('[swarm:connection:follow-request] ✓ Recebi follow-request de:', msg.identityKey.slice(0, 16))
               if (this.lifecycleState === 'ready') {
                 this._recordFollower(msg.identityKey).catch((err) => {
@@ -395,111 +413,218 @@ class P2PNode extends EventEmitter {
     return this.recoveryStorageDir
   }
 
+  /**
+   * Descreve o estado de cada peer conectado a um core — diagnóstico da
+   * recuperação de identidade. Para cada peer, informa o tamanho remoto
+   * anunciado, se a cópia remota cobre todos os blocos 0..remoteLength-1
+   * (seeder completo) e quantos blocos faltam na visão remota.
+   */
+  _describeCorePeers(core) {
+    try {
+      const peers = (core && core.peers) || []
+      return peers.map((peer, idx) => {
+        const remoteLength = peer.remoteLength || 0
+        let complete = false
+        let missing = 0
+        if (peer.remoteBitfield && remoteLength > 0) {
+          const firstMissing = peer.remoteBitfield.findFirst(false, 0)
+          complete = firstMissing < 0 || firstMissing >= remoteLength
+          for (let b = 0; b < remoteLength; b++) {
+            if (!peer.remoteBitfield.get(b)) missing++
+          }
+        }
+        return {
+          idx,
+          remoteLength,
+          remoteContiguousLength: peer.remoteContiguousLength || 0,
+          remoteSynced: !!peer.remoteSynced,
+          complete,
+          // "vazio": anunciou o tamanho do core, mas não tem NENHUM bloco
+          // (ex.: outra instância da mesma identidade em modo recuperação).
+          empty: remoteLength > 0 && missing === remoteLength,
+          missing
+        }
+      })
+    } catch {
+      return []
+    }
+  }
+
   async _recoverFromNetwork(keyPair, coreKey) {
     let lastDownloadedCount = -1
     let stallStreak = 0
     let stalledNotified = false
 
-    while (this.lifecycleState === 'recovery' && !this.recoveryCancelled) {
-      try {
-        await withTimeout(this.myCore.update({ wait: true }), 3000, null)
-        if (this.myCore.length === 0) {
-          // Nenhum seeder com dados no momento — volta para a fase de busca.
-          lastDownloadedCount = -1
-          stallStreak = 0
-          stalledNotified = false
-          if (this.recoveryState !== 'waiting') {
-            this.recoveryState = 'waiting'
-            this.emit('recovery-updated', { state: this.recoveryState, timeoutMs: this.recoveryTimeoutMs })
-          }
-          await new Promise((resolve) => setTimeout(resolve, 500))
-          continue
-        }
-
-        // Um seeder apareceu e há dados para baixar — avisa a UI para mostrar
-        // a fase de sincronização ("seeder encontrado, baixando dados…").
+    // A detecção de "seeder incompleto" precisa reagir à entrada/saída de
+    // peers: um seeder completo que aparece no meio do stall não pode ficar
+    // mascarado pelo aviso anterior (nem pelos contadores de progresso).
+    const recoveryCore = this.myCore
+    const onPeerAdd = () => {
+      lastDownloadedCount = -1
+      stallStreak = 0
+      const wasStalled = stalledNotified
+      stalledNotified = false
+      if (wasStalled) {
+        // Novo seeder na rede — limpa o aviso e volta a "baixando".
         this.recoveryState = 'syncing'
-        this.emit('recovery-updated', { state: this.recoveryState })
+        this.emit('recovery-updated', { state: this.recoveryState, resetStall: true })
+      }
+    }
+    const onPeerRemove = () => {
+      lastDownloadedCount = -1
+      stallStreak = 0
+      stalledNotified = false
+    }
+    recoveryCore.on('peer-add', onPeerAdd)
+    recoveryCore.on('peer-remove', onPeerRemove)
 
-        const download = this.myCore.download({ start: 0, end: this.myCore.length })
-        this.recoveryDownload = download
-        const downloaded = await withTimeout(download.done().then(() => true), 15000, false)
-        if (this.recoveryDownload === download) this.recoveryDownload = null
-        if (this.recoveryCancelled) return
-
-        if (!downloaded) {
-          // O download não terminou no tempo. Conta quantos blocos realmente
-          // chegaram para distinguir "ainda baixando" de "seeder incompleto":
-          // um seeder parcial anuncia o tamanho do core, envia os blocos que
-          // tem e deixa o resto pendurado para sempre.
-          const len = this.myCore.length
-          let have = 0
-          if (len > 0) {
-            for (let i = 0; i < len; i++) {
-              if (await this.myCore.has(i)) have++
+    try {
+      while (this.lifecycleState === 'recovery' && !this.recoveryCancelled) {
+        try {
+          await withTimeout(this.myCore.update({ wait: true }), 3000, null)
+          if (this.myCore.length === 0) {
+            // Nenhum seeder com dados no momento — volta para a fase de busca.
+            lastDownloadedCount = -1
+            stallStreak = 0
+            stalledNotified = false
+            if (this.recoveryState !== 'waiting') {
+              this.recoveryState = 'waiting'
+              this.emit('recovery-updated', { state: this.recoveryState, timeoutMs: this.recoveryTimeoutMs })
             }
+            await new Promise((resolve) => setTimeout(resolve, 500))
+            continue
           }
 
-          if (have < len) {
-            if (have > lastDownloadedCount) {
-              // Há progresso — algum peer está enviando blocos.
-              lastDownloadedCount = have
-              stallStreak = 0
-              stalledNotified = false
-            } else {
-              // Nenhum progresso desde a tentativa anterior: os seeders na rede
-              // têm cópias INCOMPLETAS e não conseguem enviar o que falta.
-              stallStreak++
-              if (stallStreak >= 3 && !stalledNotified) {
-                stalledNotified = true
-                this.recoveryState = 'stalled'
-                this.emit('recovery-updated', { state: this.recoveryState, downloaded: have, length: len })
+          // Se o tamanho anunciado não é coberto por nenhum peer conectado, o
+          // seeder que o anunciou caiu da rede: o length ficou "obsoleto" e não
+          // deve ser tratado como falta de progresso (evita falso stall).
+          const connectedPeers = this.myCore.peers || []
+          if (connectedPeers.length > 0 &&
+              !connectedPeers.some((p) => (p.remoteLength || 0) >= this.myCore.length)) {
+            lastDownloadedCount = -1
+            stallStreak = 0
+            stalledNotified = false
+            console.log('[recovery] ⚠️ Nenhum peer conectado cobre length=' + this.myCore.length +
+              ' (seeder caiu?); resetando detecção de stall.')
+          }
+
+          // Um seeder apareceu e há dados para baixar — avisa a UI para mostrar
+          // a fase de sincronização ("seeder encontrado, baixando dados…").
+          this.recoveryState = 'syncing'
+          this.emit('recovery-updated', { state: this.recoveryState })
+
+          // Conta blocos que chegam DURANTE a janela (evento 'download') para
+          // distinguir "ainda baixando" de "parado" com mais precisão do que a
+          // contagem feita apenas depois da janela fixa.
+          let blocksThisIteration = 0
+          const onBlockDownload = () => { blocksThisIteration++ }
+          this.myCore.on('download', onBlockDownload)
+
+          const download = this.myCore.download({ start: 0, end: this.myCore.length })
+          this.recoveryDownload = download
+          // catch evita "unhandled rejection" se o download for destruído
+          // (timeout ou stop()) enquanto done() ainda está pendente.
+          const downloaded = await withTimeout(
+            download.done().then(() => true).catch(() => false), this.recoveryDownloadTimeoutMs, false
+          )
+          this.myCore.removeListener('download', onBlockDownload)
+          if (this.recoveryDownload === download) this.recoveryDownload = null
+          if (this.recoveryCancelled) return
+
+          if (!downloaded) {
+            // O download não terminou no tempo. Conta quantos blocos realmente
+            // chegaram para distinguir "ainda baixando" de "seeder incompleto":
+            // um seeder parcial anuncia o tamanho do core, envia os blocos que
+            // tem e deixa o resto pendurado para sempre.
+            const len = this.myCore.length
+            let have = 0
+            if (len > 0) {
+              for (let i = 0; i < len; i++) {
+                if (await this.myCore.has(i)) have++
               }
             }
+
+            const progress = blocksThisIteration > 0 || have > lastDownloadedCount
+            if (have < len) {
+              const peersInfo = this._describeCorePeers(this.myCore)
+              const desc = peersInfo.map((p) =>
+                `peer#${p.idx} len=${p.remoteLength} completo=${p.complete} vazio=${p.empty} faltando=${p.missing}`).join(' | ')
+              console.log(`[recovery] download incompleto: ${have}/${len} blocos ` +
+                `(progresso=${progress}, streak=${stallStreak})` + (desc ? ` | ${desc}` : ''))
+
+              if (progress) {
+                // Há progresso — algum peer está enviando blocos.
+                lastDownloadedCount = have
+                stallStreak = 0
+                stalledNotified = false
+              } else {
+                // Nenhum progresso desde a tentativa anterior: os seeders na rede
+                // têm cópias INCOMPLETAS e não conseguem enviar o que falta.
+                stallStreak++
+                if (stallStreak >= 3 && !stalledNotified) {
+                  stalledNotified = true
+                  this.recoveryState = 'stalled'
+                  console.log(`[recovery] ⚠️ Seeder incompleto: recebidos ${have}/${len} blocos.` +
+                    (desc ? ` Peers conectados: ${desc}` : ' (sem peers conectados)'))
+                  this.emit('recovery-updated', {
+                    state: this.recoveryState,
+                    downloaded: have,
+                    length: len,
+                    peers: peersInfo
+                  })
+                }
+              }
+            }
+
+            // Encerra o range de download desta iteração (o próximo loop cria
+            // outro) para não acumular ranges sobrepostos pedindo os blocos.
+            try { download.destroy() } catch { /* ignora */ }
+
+            await new Promise((resolve) => setTimeout(resolve, 500))
+            continue
           }
 
-          await new Promise((resolve) => setTimeout(resolve, 500))
-          continue
-        }
+          const profile = await withTimeout(this.myBee.get('profile'), 3000, null)
+          if (profile) {
+            const followList = (profile && profile.value.followList) || []
+            const coreKeyHex = this.myCore.key.toString('hex')
+            await this.swarm.leave(this.myCore.discoveryKey).catch(() => {})
+            await this.myBee.close().catch(() => {})
+            await this.myCore.close().catch(() => {})
+            // Só agora — com os dados de fato recuperados — o storage temporário é
+            // promovido para o local definitivo (dataDir/corestore).
+            await this._promoteRecoveryStorage()
 
-        const profile = await withTimeout(this.myBee.get('profile'), 3000, null)
-        if (profile) {
-          const followList = (profile && profile.value.followList) || []
-          const coreKeyHex = this.myCore.key.toString('hex')
-          await this.swarm.leave(this.myCore.discoveryKey).catch(() => {})
-          await this.myBee.close().catch(() => {})
-          await this.myCore.close().catch(() => {})
-          // Só agora — com os dados de fato recuperados — o storage temporário é
-          // promovido para o local definitivo (dataDir/corestore).
-          await this._promoteRecoveryStorage()
+            this.myCore = this.store.get({ key: coreKeyHex, keyPair })
+            await this.myCore.ready()
+            if (!coreKey || coreKey !== coreKeyHex) {
+              saveCoreKey(this.identityFile, coreKeyHex)
+            }
+            this.myBee = new Hyperbee(this.myCore, { keyEncoding: 'utf-8', valueEncoding: 'json' })
+            await this.myBee.ready()
+            await this._joinTopic(this.myCore)
+            await Promise.all(followList.map((hex) =>
+              this._openFollowed(hex, { waitForProfile: true }).catch((err) => this.emit('error', err))
+            ))
 
-          this.myCore = this.store.get({ key: coreKeyHex, keyPair })
-          await this.myCore.ready()
-          if (!coreKey || coreKey !== coreKeyHex) {
-            saveCoreKey(this.identityFile, coreKeyHex)
+            writeRecoveredMarker(this.dataDir)
+            this.recoveryState = 'recovered'
+            this.lifecycleState = 'ready'
+            this.ready = true
+            this.emit('recovery-updated', { state: this.recoveryState, publicKeyHex: this.myPublicKeyHex })
+            this.emit('ready', { publicKeyHex: this.myPublicKeyHex })
+            return
           }
-          this.myBee = new Hyperbee(this.myCore, { keyEncoding: 'utf-8', valueEncoding: 'json' })
-          await this.myBee.ready()
-          await this._joinTopic(this.myCore)
-          await Promise.all(followList.map((hex) =>
-            this._openFollowed(hex, { waitForProfile: true }).catch((err) => this.emit('error', err))
-          ))
-
-          writeRecoveredMarker(this.dataDir)
-          this.recoveryState = 'recovered'
-          this.lifecycleState = 'ready'
-          this.ready = true
-          this.emit('recovery-updated', { state: this.recoveryState, publicKeyHex: this.myPublicKeyHex })
-          this.emit('ready', { publicKeyHex: this.myPublicKeyHex })
-          return
+        } catch (err) {
+          if (err.code !== 'SESSION_CLOSED') this.emit('error', err)
         }
-      } catch (err) {
-        if (err.code !== 'SESSION_CLOSED') this.emit('error', err)
+
+        await new Promise((resolve) => setTimeout(resolve, 500))
       }
-
-      await new Promise((resolve) => setTimeout(resolve, 500))
+    } finally {
+      recoveryCore.removeListener('peer-add', onPeerAdd)
+      recoveryCore.removeListener('peer-remove', onPeerRemove)
     }
-
   }
 
   /**
@@ -768,7 +893,11 @@ class P2PNode extends EventEmitter {
     await core.ready()
     const bee = new Hyperbee(core, { keyEncoding: 'utf-8', valueEncoding: 'json' })
 
-    const discovery = await this._joinTopic(core)
+    // Cria o entry ANTES de registrar os handlers: o 'peer-add' pode disparar
+    // assim que o tópico é anunciado, e o handler o referenciava em TDZ
+    // ("Cannot access 'entry' before initialization") — o follow-request para
+    // o novo peer era perdido silenciosamente.
+    const entry = { core, bee, discovery: null }
 
     core.on('append', () => this.emit('feed-updated'))
     // Reenvia o follow-request a cada novo peer conectado ao core seguido: o envio
@@ -779,15 +908,15 @@ class P2PNode extends EventEmitter {
     // mar de "Aguardando peers…" no log.
     core.on('peer-add', () => {
       this.emit('peers-changed')
-      if (!isFollower) {
+      if (!isFollower && entry.core) {
         this._sendFollowRequestsNow(pubKeyHex, entry)
       }
     })
     core.on('peer-remove', () => this.emit('peers-changed'))
 
-    const entry = { core, bee, discovery }
+    entry.discovery = await this._joinTopic(core)
     targetMap.set(pubKeyHex, entry)
-    
+
     return entry
   }
 
@@ -797,9 +926,16 @@ class P2PNode extends EventEmitter {
     const peers = core.peers || []
     if (peers.length === 0) return
 
+    // O follow-request declara: "identityKey está seguindo o dono do core
+    // targetKey". O alvo é obrigatório porque este nó envia o pedido a TODOS
+    // os peers conectados ao core seguido (o dono e também outros nós que
+    // estão replicando o mesmo core) — e só o dono (targetKey === ele mesmo)
+    // deve registrar o seguidor. Sem o alvo, qualquer peer conectado ao core
+    // registraria um seguidor que nunca o seguiu.
     const followRequest = JSON.stringify({
       type: 'follow-request',
-      identityKey: this.myPublicKeyHex
+      identityKey: this.myPublicKeyHex,
+      targetKey: pubKeyHex
     })
     let sent = 0
     for (const peer of peers) {

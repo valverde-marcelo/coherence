@@ -171,7 +171,7 @@ body {
   50% { transform: scale(1.2); opacity: 1; }
 }
 
-.setup-status--phase { margin-top: 4px; }
+.setup-status--phase { margin-top: 4px; white-space: pre-line; }
 .setup-status--meta { color: var(--muted); min-height: 16px; }
 
 .setup-recovery__actions {

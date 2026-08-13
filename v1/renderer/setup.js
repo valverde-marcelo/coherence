@@ -40,7 +40,33 @@ function setBusy(busy) {
   setupEls.username.disabled = busy
 }
 
-function setRecoveryPhase(phase) {
+function buildStalledMessage(info) {
+  const t = (key) => window.coherenceI18n.text(key)
+  let message = t('seederIncomplete')
+  if (!info) return message
+  const lines = []
+  if (typeof info.downloaded === 'number' && typeof info.length === 'number' && info.length > 0) {
+    lines.push(t('recoveryProgress')
+      .replace('{have}', String(info.downloaded))
+      .replace('{length}', String(info.length)))
+  }
+  if (Array.isArray(info.peers) && info.peers.length > 0) {
+    const complete = info.peers.filter((p) => p.complete).length
+    const empty = info.peers.filter((p) => p.empty).length
+    const partial = info.peers.length - complete - empty
+    lines.push(t('recoveryPeersInfo')
+      .replace('{peers}', String(info.peers.length))
+      .replace('{complete}', String(complete)))
+    lines.push(t('recoveryPeersBreakdown')
+      .replace('{complete}', String(complete))
+      .replace('{partial}', String(partial))
+      .replace('{empty}', String(empty)))
+  }
+  if (lines.length > 0) message += '\n' + lines.join('\n')
+  return message
+}
+
+function setRecoveryPhase(phase, info) {
   recoveryPhase = phase === 'syncing' ? 'syncing' : phase === 'stalled' ? 'stalled' : 'searching'
   if (recoveryPhase === 'stalled') recoveryStalled = true
   // Depois de avisar que o seeder está incompleto, não deixa os eventos
@@ -49,7 +75,7 @@ function setRecoveryPhase(phase) {
   setupEls.recoveryStatus.textContent = recoveryPhase === 'syncing'
     ? window.coherenceI18n.text('seederFound')
     : recoveryPhase === 'stalled'
-      ? window.coherenceI18n.text('seederIncomplete')
+      ? buildStalledMessage(info)
       : window.coherenceI18n.text('searchingSeeders')
 }
 
@@ -129,10 +155,13 @@ window.p2p.on('recovery-updated', (result) => {
     return
   }
   if (result.state === 'stalled') {
-    setRecoveryPhase('stalled')
+    setRecoveryPhase('stalled', result)
     return
   }
   if (result.state === 'syncing') {
+    // Um novo seeder chegou à rede durante o stall (resetStall vem do backend):
+    // limpa o aviso e volta a mostrar "baixando dados…".
+    if (result.resetStall) recoveryStalled = false
     setRecoveryPhase('syncing')
   }
 })

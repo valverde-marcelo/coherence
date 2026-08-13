@@ -171,10 +171,14 @@ function renderLinksList() {
 }
 
 async function refreshStatus() {
-  const count = await window.p2p.getPeerCount()
-  els.statusText.textContent = count === 0
-    ? 'nenhum peer conectado ainda'
-    : `${count} peer${count === 1 ? '' : 's'} conectado${count === 1 ? '' : 's'}`
+  try {
+    const count = await window.p2p.getPeerCount()
+    els.statusText.textContent = count === 0
+      ? 'nenhum peer conectado ainda'
+      : `${count} peer${count === 1 ? '' : 's'} conectado${count === 1 ? '' : 's'}`
+  } catch (err) {
+    // Ignora falhas transitórias (ex.: node null durante reset/quit)
+  }
 }
 
 function renderFollowing(list) {

@@ -23,6 +23,7 @@ let dataDir = null
 let statusUpdateInterval = null
 let nodeLifecycle = Promise.resolve()
 let quitting = false
+let shuttingDown = false
 
 // =====================================================================
 // Proteção contra "EPIPE: broken pipe" ao logar
@@ -137,6 +138,7 @@ async function startNode({ recovery = false } = {}) {
 
     const startedNode = new P2PNode({ dataDir })
     node = startedNode
+    shuttingDown = false
     console.log('Iniciando nó P2P com storage em', startedNode.dataDir)
     startedNode.on('feed-updated', forward('p2p:event:feed-updated'))
     startedNode.on('profile-updated', forward('p2p:event:profile-updated'))
@@ -180,6 +182,9 @@ async function startNode({ recovery = false } = {}) {
 
 function stopNode() {
   const operation = nodeLifecycle.then(async () => {
+    // Marca o shutdown: o forward() para de repassar eventos ao renderer e os
+    // handlers IPC retornam valores padrão enquanto `node` estiver nulo.
+    shuttingDown = true
     if (statusUpdateInterval) {
       clearInterval(statusUpdateInterval)
       statusUpdateInterval = null
@@ -251,25 +256,30 @@ async function createWindow() {
 // Encaminha eventos do P2PNode para a janela, como updates de feed/perfil.
 function forward(channel) {
   return (...args) => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
+    // Durante shutdown (reset/quit) não repassa eventos: o renderer ainda está
+    // vivo e reagiria chamando handlers IPC com `node` já nulo.
+    if (!shuttingDown && mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send(channel, ...args)
     }
   }
 }
 
 function registerIpcHandlers() {
-  ipcMain.handle('p2p:get-my-key', () => node.myPublicKeyHex)
-  ipcMain.handle('p2p:get-profile', () => node.getMyProfile())
-  ipcMain.handle('p2p:update-profile', (_evt, patch) => node.updateMyProfile(patch))
-  ipcMain.handle('p2p:publish-post', (_evt, post) => node.publishPost(post))
-  ipcMain.handle('p2p:follow', (_evt, key) => node.follow(key))
-  ipcMain.handle('p2p:unfollow', (_evt, key) => node.unfollow(key))
-  ipcMain.handle('p2p:get-profile-of', (_evt, key) => node.getProfile(key))
-  ipcMain.handle('p2p:get-following', () => node.getFollowingList())
-  ipcMain.handle('p2p:get-feed', (_evt, opts) => node.getFeed(opts))
-  ipcMain.handle('p2p:get-peer-count', () => node.swarm.connections.size)
-  ipcMain.handle('p2p:get-followers', () => node.getFollowers())
-  ipcMain.handle('p2p:get-posts-of', (_evt, key) => node.getPostsOf(key))
+  // Guards: durante reset/quit o `node` pode estar null enquanto o renderer
+  // ainda faz chamadas (ex.: reação a peers-changed do shutdown). Retornam
+  // valores padrão em vez de lançar TypeError no processo main.
+  ipcMain.handle('p2p:get-my-key', () => node ? node.myPublicKeyHex : null)
+  ipcMain.handle('p2p:get-profile', () => node ? node.getMyProfile() : null)
+  ipcMain.handle('p2p:update-profile', (_evt, patch) => node ? node.updateMyProfile(patch) : null)
+  ipcMain.handle('p2p:publish-post', (_evt, post) => node ? node.publishPost(post) : null)
+  ipcMain.handle('p2p:follow', (_evt, key) => node ? node.follow(key) : null)
+  ipcMain.handle('p2p:unfollow', (_evt, key) => node ? node.unfollow(key) : null)
+  ipcMain.handle('p2p:get-profile-of', (_evt, key) => node ? node.getProfile(key) : null)
+  ipcMain.handle('p2p:get-following', () => node ? node.getFollowingList() : null)
+  ipcMain.handle('p2p:get-feed', (_evt, opts) => node ? node.getFeed(opts) : null)
+  ipcMain.handle('p2p:get-peer-count', () => node && node.swarm ? node.swarm.connections.size : 0)
+  ipcMain.handle('p2p:get-followers', () => node ? node.getFollowers() : [])
+  ipcMain.handle('p2p:get-posts-of', (_evt, key) => node ? node.getPostsOf(key) : null)
   ipcMain.handle('setup:get-settings', () => readSettings())
   ipcMain.handle('setup:set-settings', (_evt, settings) => writeSettings(settings))
   ipcMain.handle('setup:check-identity', () => fs.existsSync(path.join(dataDir, 'identity.json')))
