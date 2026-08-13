@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('p2p', {
   getPeerCount: () => ipcRenderer.invoke('p2p:get-peer-count'),
   getFollowers: () => ipcRenderer.invoke('p2p:get-followers'),
   getPostsOf: (key) => ipcRenderer.invoke('p2p:get-posts-of', key),
+  searchUsers: (query, opts) => ipcRenderer.invoke('p2p:search-users', query, opts),
 
   setup: {
     getSettings: () => ipcRenderer.invoke('setup:get-settings'),

@@ -1142,6 +1142,135 @@ class P2PNode extends EventEmitter {
     })
   }
 
+  /**
+   * Busca usuários de forma TRANSITIVA pelo grafo de follows.
+   *
+   * A partir de quem este nó segue (grau 1) e dos seus seguidores, percorre o
+   * grafo nas DUAS direções — os followLists (quem cada perfil segue) e os
+   * registros de seguidores (quem segue cada perfil) — carregando os perfis sob
+   * demanda (abre o core do usuário e lê o perfil), até maxDepth saltos. Assim,
+   * num cenário Alice→Bob→Carol→Dave, qualquer nó encontra os outros: Alice acha
+   * Carol (via Bob) e Dave (via Carol); Dave acha Bob e Alice atravessando os
+   * seguidores ao contrário — sempre há um ponto em comum.
+   *
+   * @param {string} query - termo a casar (nome, bio ou prefixo da chave)
+   * @param {{ maxDepth?: number, maxResults?: number, timeoutMs?: number }} opts
+   * @returns {Promise<Array<{publicKeyHex, nome, bio, depth, via}>>}
+   */
+  async searchUsers(query, { maxDepth = 3, maxResults = 30, timeoutMs = 6000 } = {}) {
+    return this._runOperation(async () => {
+      const q = String(query || '').trim().toLowerCase()
+      if (!q) return []
+
+      const resultMap = new Map()
+      const visited = new Set()
+      const queue = []
+
+      const matches = (profile) => {
+        const nome = String(profile.nome || '').toLowerCase()
+        const bio = String(profile.bio || '').toLowerCase()
+        return nome.includes(q) || bio.includes(q) || String(profile.publicKeyHex).toLowerCase().includes(q)
+      }
+
+      // Lê o perfil de uma chave, abrindo o core sob demanda se ainda não
+      // estiver carregado (mesmo caminho do auto-load de seguidores).
+      const loadProfile = async (key, via) => {
+        let entry = this.followed.get(key) || this.followerDataCache.get(key)
+        if (!entry) {
+          try {
+            entry = await this._loadFollowerData(key, true)
+          } catch {
+            return null
+          }
+        }
+        if (!entry) return null
+        const result = await withTimeout(entry.bee.get('profile'), timeoutMs, null)
+        const value = result && result.value
+        if (!value || value.nome === undefined) return null
+
+        // Seguidores do perfil (registros followers!<pubkey>) — permite
+        // atravessar a cadeia ao CONTRÁRIO (ex.: Dave descobre Bob via os
+        // seguidores da Carol, e Alice via os seguidores do Bob).
+        let followers = []
+        try {
+          const stream = entry.bee.createReadStream({
+            gte: FOLLOWERS_PREFIX,
+            lt: FOLLOWERS_PREFIX + '\uffff'
+          })
+          const records = await collectWithTimeout(stream, timeoutMs)
+          followers = records
+            .filter((e) => e.value && e.value.isActive)
+            .map((e) => pubKeyFromFollowerKey(e.key))
+        } catch {
+          // Sem seguidores legíveis (offline/parcial) — segue só para a frente.
+        }
+        return {
+          publicKeyHex: key,
+          nome: value.nome,
+          bio: value.bio || '',
+          avatar: value.avatar || null,
+          links: value.links || [],
+          followList: value.followList || [],
+          followers,
+          via
+        }
+      }
+
+      // Próprio perfil (grau 0)
+      const myProfile = await this.getProfile(this.myPublicKeyHex)
+      if (myProfile && matches({ publicKeyHex: this.myPublicKeyHex, nome: myProfile.nome, bio: myProfile.bio })) {
+        resultMap.set(this.myPublicKeyHex, {
+          publicKeyHex: this.myPublicKeyHex,
+          nome: myProfile.nome,
+          bio: myProfile.bio || '',
+          depth: 0,
+          via: null
+        })
+      }
+
+      // Seeds (grau 1): quem eu sigo + meus seguidores
+      const following = await this.getFollowingList()
+      for (const p of following) queue.push({ key: p.publicKeyHex, depth: 1, via: null })
+      const followers = await this.getFollowers()
+      for (const f of followers) queue.push({ key: f.publicKeyHex, depth: 1, via: null })
+
+      // BFS pela cadeia de follows (carrega perfis e explora os followLists)
+      let index = 0
+      while (index < queue.length && resultMap.size < maxResults) {
+        const { key, depth, via } = queue[index++]
+        if (visited.has(key) || key === this.myPublicKeyHex) continue
+        visited.add(key)
+
+        const profile = await loadProfile(key, via)
+        if (!profile) continue
+
+        if (matches(profile) && !resultMap.has(key)) {
+          resultMap.set(key, {
+            publicKeyHex: key,
+            nome: profile.nome,
+            bio: profile.bio,
+            depth,
+            via
+          })
+        }
+
+        if (depth < maxDepth) {
+          // Atravessa nas DUAS direções: quem este perfil segue (followList) e
+          // quem o segue (followers) — assim qualquer nó da cadeia encontra os
+          // outros, independente da direção dos follows.
+          const neighbors = new Set([...profile.followList, ...profile.followers])
+          for (const next of neighbors) {
+            if (next && next !== this.myPublicKeyHex && !visited.has(next)) {
+              queue.push({ key: next, depth: depth + 1, via: key })
+            }
+          }
+        }
+      }
+
+      return [...resultMap.values()]
+    })
+  }
+
   /** Retorna todos os posts de um usuário específico (seguido ou seguidor). */
   async getPostsOf(pubKeyHex) {
     return this._runOperation(async () => {

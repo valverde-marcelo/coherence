@@ -279,6 +279,7 @@ function registerIpcHandlers() {
   ipcMain.handle('p2p:get-feed', (_evt, opts) => node ? node.getFeed(opts) : null)
   ipcMain.handle('p2p:get-peer-count', () => node && node.swarm ? node.swarm.connections.size : 0)
   ipcMain.handle('p2p:get-followers', () => node ? node.getFollowers() : [])
+  ipcMain.handle('p2p:search-users', (_evt, query, opts) => node ? node.searchUsers(query, opts) : [])
   ipcMain.handle('p2p:get-posts-of', (_evt, key) => node ? node.getPostsOf(key) : null)
   ipcMain.handle('setup:get-settings', () => readSettings())
   ipcMain.handle('setup:set-settings', (_evt, settings) => writeSettings(settings))

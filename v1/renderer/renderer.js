@@ -726,45 +726,103 @@ els.backToFeedFromSearchBtn.addEventListener('click', () => {
   els.searchResults.innerHTML = ''
 })
 
-// Search Button
-els.searchBtn.addEventListener('click', () => {
-  const query = els.searchInput.value.trim().toLowerCase()
-  if (!query) {
-    return
+// Search Button — busca TRANSITIVA pelo grafo de follows (amigos de amigos)
+els.searchBtn.addEventListener('click', async () => {
+  const query = els.searchInput.value.trim()
+  if (!query) return
+
+  els.searchResults.innerHTML = '<p style="font-size: 12px; color: var(--muted);">buscando…</p>'
+  try {
+    const results = await window.p2p.searchUsers(query)
+    if (!results || results.length === 0) {
+      els.searchResults.innerHTML = '<p style="font-size: 12px; color: var(--muted);">Nenhum resultado encontrado</p>'
+      return
+    }
+
+    // Mapa chave → nome para rotular a relação ("via …")
+    const keyToName = {}
+    for (const p of results) if (p.nome) keyToName[p.publicKeyHex] = p.nome
+    for (const p of currentFollowingList) if (p.nome) keyToName[p.publicKeyHex] = p.nome
+
+    const relationOf = (peer) => {
+      if (peer.depth === 0) return 'você'
+      if (peer.depth === 1) return 'seguindo/seguidor'
+      const viaName = peer.via && (keyToName[peer.via] || shortKey(peer.via))
+      return viaName ? 'via ' + viaName : 'via rede'
+    }
+
+    const resultsDiv = document.createElement('div')
+    resultsDiv.style.fontSize = '12px'
+
+    for (const peer of results) {
+      const item = document.createElement('div')
+      item.style.padding = '8px 0'
+      item.style.borderBottom = '1px solid var(--line)'
+      item.style.cursor = 'pointer'
+
+      const nameEl = document.createElement('div')
+      nameEl.style.color = 'var(--relay)'
+      nameEl.textContent = peer.nome || shortKey(peer.publicKeyHex)
+      item.appendChild(nameEl)
+
+      if (peer.bio) {
+        const bioEl = document.createElement('div')
+        bioEl.style.fontSize = '11px'
+        bioEl.style.color = 'var(--muted)'
+        bioEl.textContent = peer.bio
+        item.appendChild(bioEl)
+      }
+
+      const metaEl = document.createElement('div')
+      metaEl.style.fontSize = '11px'
+      metaEl.style.color = 'var(--muted)'
+      metaEl.textContent = [relationOf(peer), shortKey(peer.publicKeyHex)].filter(Boolean).join(' · ')
+      item.appendChild(metaEl)
+
+      const actionsEl = document.createElement('div')
+      actionsEl.style.marginTop = '4px'
+      const viewBtn = document.createElement('button')
+      viewBtn.type = 'button'
+      viewBtn.className = 'btn btn--ghost btn--small'
+      viewBtn.textContent = 'ver perfil'
+      viewBtn.addEventListener('click', (evt) => {
+        evt.stopPropagation()
+        showProfileView(peer.publicKeyHex)
+      })
+      actionsEl.appendChild(viewBtn)
+
+      if (peer.publicKeyHex !== myKey && !currentFollowingList.some((p) => p.publicKeyHex === peer.publicKeyHex)) {
+        const followBtn = document.createElement('button')
+        followBtn.type = 'button'
+        followBtn.className = 'btn btn--accent btn--small'
+        followBtn.textContent = 'seguir'
+        followBtn.addEventListener('click', async (evt) => {
+          evt.stopPropagation()
+          try {
+            await window.p2p.follow(peer.publicKeyHex)
+            delete profileCache[peer.publicKeyHex]
+            followBtn.textContent = '✓ seguindo'
+            followBtn.disabled = true
+            await loadFollowing()
+            await loadFeed()
+          } catch (err) {
+            console.error('Erro ao seguir:', err)
+          }
+        })
+        actionsEl.appendChild(followBtn)
+      }
+      item.appendChild(actionsEl)
+
+      item.addEventListener('click', () => showProfileView(peer.publicKeyHex))
+      resultsDiv.appendChild(item)
+    }
+
+    els.searchResults.innerHTML = ''
+    els.searchResults.appendChild(resultsDiv)
+  } catch (err) {
+    console.error('Erro na busca:', err)
+    els.searchResults.innerHTML = '<p style="font-size: 12px; color: var(--muted);">erro na busca</p>'
   }
-  
-  els.searchResults.innerHTML = ''
-  
-  // Search in following list
-  const matches = currentFollowingList.filter(peer =>
-    peer.nome?.toLowerCase().includes(query) ||
-    peer.publicKeyHex.toLowerCase().includes(query)
-  )
-  
-  if (matches.length === 0) {
-    els.searchResults.innerHTML = '<p style="font-size: 12px; color: var(--muted);">Nenhum resultado encontrado</p>'
-    return
-  }
-  
-  const resultsDiv = document.createElement('div')
-  resultsDiv.style.fontSize = '12px'
-  
-  for (const peer of matches) {
-    const item = document.createElement('div')
-    item.style.padding = '6px 0'
-    item.style.borderBottom = '1px solid var(--line)'
-    item.style.cursor = 'pointer'
-    item.style.color = 'var(--relay)'
-    item.textContent = peer.nome || shortKey(peer.publicKeyHex)
-    item.addEventListener('click', () => {
-      showProfileView(peer.publicKeyHex)
-      els.searchInput.value = ''
-      els.searchResults.innerHTML = ''
-    })
-    resultsDiv.appendChild(item)
-  }
-  
-  els.searchResults.appendChild(resultsDiv)
 })
 
 els.searchInput.addEventListener('keypress', (evt) => {

@@ -43,6 +43,11 @@ recriar identidade nenhuma.
   durante a recuperação remove a importação pendente (o próximo início volta para as boas-vindas),
   e um crash no meio do processo volta para a tela de recuperação. Sem seeder, a opção
   "começar do zero" agora gera uma **identidade nova** (descarta a chave importada).
+- **Pesquisa de usuários (transitiva)** — `searchUsers()` percorre o grafo de follows nas
+  duas direções (quem você segue/seguidores e, de cada perfil, seus follows e seguidores),
+  carregando perfis sob demanda até 3 saltos. Num cenário Alice→Bob→Carol→Dave, qualquer
+  usuário localiza os outros por nome, bio ou prefixo de chave, com o caminho ("via Bob",
+  "via Carol") e ações de ver perfil/seguir.
 
 ## Como rodar
 
@@ -110,10 +115,11 @@ Isso roda testes de integração reais (`test/`) contra uma **DHT local isolada*
 
 - `test-posts-and-unfollow.js` — validação de posts (texto/imagem/limite de tamanho) e follow/unfollow.
 - `test-integration-follow-sync.js` — Bob segue Alice, sincroniza o histórico e recebe posts novos em tempo real.
+- `test-follow-target.js` — o follow-request só registra o seguidor no dono correto (targetKey).
+- `test-search-transitive.js` — busca transitiva: em Alice→Bob→Carol→Dave, qualquer nó encontra os outros.
 - `test-integration-seeding.js` — **o requisito de semeadura**: Bob segue Alice, Alice fica
   offline, Carol passa a seguir Alice mesmo assim e recebe os posts dela através do Bob.
 - `test-persistence.js` — identidade, posts e lista de seguidos sobrevivem a um reinício do app.
-- `test-followers-records.js` — registros de seguidores persistem após reinícios.
 - `test-restart-after-stop-race.js` — leitura concorrente durante stop e primeiro post após reabertura.
 - `test-identity-recovery.js` — recuperação de perfil, posts e seguidores usando apenas `identity.json`.
 - `test-recovery-timeout.js` — timeout sem seeder e fallback para um core novo.

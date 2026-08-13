@@ -114,7 +114,6 @@ npm test
 # - test-integration-follow-sync.js  → Sincronização de seguimento
 # - test-integration-seeding.js      → Seeding de dados
 # - test-persistence.js              → Persistência de dados
-# - test-followers-records.js        → Persistência de seguidores
 # - test-restart-after-stop-race.js  → Restart durante leitura concorrente
 # - test-identity-recovery.js        → Recuperação usando apenas identity.json
 # - test-recovery-timeout.js         → Timeout e fallback para core novo
