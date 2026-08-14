@@ -6,20 +6,6 @@ A distributed social network built on P2P (peer-to-peer) technology using **Hype
 > [Multiple instances and local users](#multiple-instances-and-local-users) to manage more
 > than one local account. The initial prototype lives in `v0/`.
 
-## ⚠️ Before anything: your public key changed format
-
-In the original prototype, the "public key" you shared with friends was the raw Ed25519
-(32 bytes). **Corestore no longer supports the "compat" mode** that would preserve this
-(we tested — it forces `compat: false` internally, "no compat for now" in their own code).
-So now the key you share is the Hypercore `core.key`: a hash of the manifest (which
-internally contains the same Ed25519 key as always — the cryptographic *identity* stays
-the same, only the public address format changed).
-
-In practice: if you already tested the old prototype with a friend, you'll need to
-exchange the new key (visible at the top of the app's sidebar) before following each
-other again. Your `identity.json` (Ed25519 keypair) continues to be reused — there's no
-need to recreate any identity.
-
 ## 🌍 Overview
 
 **Coherence** is a social network platform where:
