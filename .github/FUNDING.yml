@@ -1,0 +1,10 @@
+# Coherence funding
+# This file powers the "Sponsor" button on the GitHub repository
+# (https://github.com/valverde-marcelo/coherence).
+
+# Buy Me a Coffee
+buy_me_a_coffee: valverdeoficial
+
+# Direct donation links (PayPal donate button)
+custom:
+  - https://www.paypal.com/donate/?business=MX8LMBWFQY734&no_recurring=0&item_name=If+you+like+my+open-source+projects%2C+consider+buying+me+a+coffee+to+support+my+coding+journey%21&currency_code=USD

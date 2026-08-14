@@ -20,7 +20,10 @@ window.coherenceAbout = {
         <div class="donation-block">
           <div class="donation-copy">
             <p data-i18n="donationCaption">Contribua com o desenvolvimento</p>
-            <button id="donation-paypal" type="button" class="btn btn--accent btn--small" hidden data-i18n="donatePaypal">doar via PayPal</button>
+            <div class="donation-buttons">
+              <button id="donation-paypal" type="button" class="btn btn--accent btn--small" hidden data-i18n="donatePaypal">doar via PayPal</button>
+              <button id="donation-bmc" type="button" class="btn btn--accent btn--small" hidden data-i18n="donateBmc">doar via Buy Me a Coffee</button>
+            </div>
             <div id="donation-coins" class="donation-coins"></div>
             <p id="donation-address" class="donation-address" hidden></p>
           </div>
@@ -43,6 +46,7 @@ window.coherenceAbout = {
     const addressEl = container.querySelector('#donation-address')
     const coinsEl = container.querySelector('#donation-coins')
     const paypalBtn = container.querySelector('#donation-paypal')
+    const bmcBtn = container.querySelector('#donation-bmc')
 
     const showQr = async (content, label) => {
       qrEl.src = await window.p2p.getDonationQr(content)
@@ -52,11 +56,17 @@ window.coherenceAbout = {
     }
 
     const paypal = typeof donation.paypalUrl === 'string' && donation.paypalUrl ? donation.paypalUrl : ''
+    const bmc = typeof donation.buyMeACoffeeUrl === 'string' && donation.buyMeACoffeeUrl ? donation.buyMeACoffeeUrl : ''
     const crypto = Array.isArray(donation.crypto) ? donation.crypto : []
 
     if (paypal) {
       paypalBtn.hidden = false
       paypalBtn.addEventListener('click', () => window.p2p.openExternal(paypal))
+    }
+
+    if (bmc) {
+      bmcBtn.hidden = false
+      bmcBtn.addEventListener('click', () => window.p2p.openExternal(bmc))
     }
 
     if (crypto.length > 0) {

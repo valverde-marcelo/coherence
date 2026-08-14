@@ -271,10 +271,13 @@ and settings**.
 ## 💖 Donate
 
 Coherence is free and open-source. If it's useful to you, consider supporting
-its development:
+its development. The repo also has a **Sponsor** button (see
+[.github/FUNDING.yml](.github/FUNDING.yml)):
 
-- **PayPal**: *coming soon*
-- **Crypto (BTC / ETH / …)**: *coming soon*
+- **PayPal** — [Donate](https://www.paypal.com/donate/?business=MX8LMBWFQY734&no_recurring=0&item_name=If+you+like+my+open-source+projects%2C+consider+buying+me+a+coffee+to+support+my+coding+journey%21&currency_code=USD)
+- **Buy Me a Coffee** — <https://buymeacoffee.com/valverdeoficial>
+- **USDT (TRON)** — `THBH1uEjPjSXqA56PKzfUXTvZoLCQn5s8d`
+- **BTC (Lightning Network)** — QR code inside the app's **About** tab
 
 The **About** tab inside the app shows the donation QR codes. A **Donate**
 section is also available on the [landing page](https://valverde-marcelo.github.io/coherence/).

@@ -936,6 +936,7 @@ button, input, textarea {
 .about-stack { margin: 10px 0 0; padding-left: 18px; color: var(--paper); line-height: 1.9; }
 .donation-block { grid-column: 1 / -1; display: flex; align-items: center; gap: 18px; padding-top: 20px; border-top: 1px solid var(--line); }
 .donation-copy { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; flex: 1; }
+.donation-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
 .donation-coins { display: flex; flex-wrap: wrap; gap: 6px; }
 .donation-coin {
   font-family: var(--mono); font-size: 11px; color: var(--paper);

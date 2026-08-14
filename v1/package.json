@@ -1,6 +1,6 @@
 {
   "name": "coherence",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Distributed P2P social network - Hyperswarm/Corestore/Hyperbee core + Electron interface",
   "main": "main.js",
   "private": true,

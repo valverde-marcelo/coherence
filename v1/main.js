@@ -62,10 +62,17 @@ for (const stream of [process.stdout, process.stderr]) {
 // Replace the placeholders with the real PayPal link/hosted button and wallet
 // addresses before release. The About tab renders whatever is configured here.
 const DONATIONS = {
-  // e.g. 'https://paypal.me/marcelo' or a hosted_button_id donate URL
-  paypalUrl: '',
-  // e.g. [{ coin: 'BTC', address: 'bc1q...' }, { coin: 'ETH', address: '0x...' }]
-  crypto: []
+  // PayPal donate button (a paypal.me could not be created for this account;
+  // the PayPal email is valverde.marcelo@gmail.com).
+  paypalUrl: 'https://www.paypal.com/donate/?business=MX8LMBWFQY734&no_recurring=0&item_name=If+you+like+my+open-source+projects%2C+consider+buying+me+a+coffee+to+support+my+coding+journey%21&currency_code=USD',
+  buyMeACoffeeUrl: 'https://buymeacoffee.com/valverdeoficial',
+  crypto: [
+    { coin: 'USDT (TRON)', address: 'THBH1uEjPjSXqA56PKzfUXTvZoLCQn5s8d' },
+    // Bitcoin via Lightning Network invoice (QR scannable by LN wallets).
+    // NOTE: lightning invoices expire — for a permanent donation QR prefer a
+    // lightning address or a static-payment request.
+    { coin: 'BTC (Lightning)', address: 'lnbc1p48l95rpp56pthy5lrtdzmqvqz22567kcnvq7cegmxmxce3pjfxekfv80ynsdsdquf35kw6r5de5kueeqd9h8vmmfvdjscqzpgxqyz5vqrzjqwghf7zxvfkxq5a6sr65g0gdkv768p83mhsnt0msszapamzx2qvuxqqqqpr3xsfgkqqqqqqqqqqqqqqq9qrzjq25carzepgd4vqsyn44jrk85ezrpju92xyrk9apw4cdjh6yrwt5jgqqqqpr3xsfgkqqqqqqqqqqqqqqq9qsp5q0xs92nyzeclyl95dakv8ghsdj6ksr2zg8w3rzlzxpczef4qd0ks9qxpqysgq2dm8u2xj405te8n3yuym2rjqwj7kc399nmzqh9cht80v44tp2k95vffd7pzecedn2ml4z4576ql8fykz2sgjrg9jxl2zsu7lh2kn9dgqny7g5w' }
+  ]
 }
 
 // =====================================================================
