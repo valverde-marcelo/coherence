@@ -35,7 +35,9 @@ contextBridge.exposeInMainWorld('p2p', {
   exportIdentity: () => ipcRenderer.invoke('export-identity'),
   resetApp: () => ipcRenderer.invoke('reset-app'),
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
-  getDonationQr: () => ipcRenderer.invoke('get-donation-qr'),
+  getDonationInfo: () => ipcRenderer.invoke('get-donation-info'),
+  getDonationQr: (content) => ipcRenderer.invoke('get-donation-qr', content),
+  checkForUpdates: (opts) => ipcRenderer.invoke('check-for-updates', opts),
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
 
   /** Subscribes to an event from the main process. Returns a function to unsubscribe. */

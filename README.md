@@ -256,9 +256,35 @@ Logs are printed to the console during execution:
 - [ ] Improved DHT
 - [ ] Mobile app (React Native)
 
-## 📄 License
+## � Releases & Updates
 
-MIT - See [LICENSE](LICENSE) for details
+Windows executables — **installer (NSIS)** and **portable** — are published on
+[GitHub Releases](https://github.com/valverde-marcelo/coherence/releases).
+
+The app checks for updates against GitHub Releases on startup (max once a day)
+and through **Settings → "verificar atualizações"**. When a newer release is
+available, a banner appears with a download link. Because your data lives in
+`~/Documents/coherence-data` (outside the installation folder), updating by
+reinstalling over the current version **preserves your identity, profile, posts
+and settings**.
+
+## 💖 Donate
+
+Coherence is free and open-source. If it's useful to you, consider supporting
+its development:
+
+- **PayPal**: *coming soon*
+- **Crypto (BTC / ETH / …)**: *coming soon*
+
+The **About** tab inside the app shows the donation QR codes. A **Donate**
+section is also available on the [landing page](https://valverde-marcelo.github.io/coherence/).
+
+## �📄 License
+
+Apache-2.0 - See [LICENSE](LICENSE) for details. The application is free and
+open-source, and can be used in commercial products. See
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for the license summary of the
+dependencies used by Coherence.
 
 ## 🤝 Contributing
 

@@ -129,6 +129,13 @@
         <div id="search-results" class="search-results"></div>
       </div>
 
+      <!-- Update banner (shown when a newer release is available) -->
+      <div id="update-banner" class="update-banner" hidden>
+        <span id="update-banner-text"></span>
+        <a href="#" id="update-banner-link" class="update-banner-link"></a>
+        <button id="update-banner-close" type="button" class="update-banner-close" aria-label="close">×</button>
+      </div>
+
       <!-- Composer Form (only show when viewing feed) -->
       <form class="composer" id="composer-form">
         <textarea id="composer-text" placeholder="transmitir algo para a rede…" rows="3" data-i18n-placeholder="composerPlaceholder"></textarea>
@@ -204,6 +211,10 @@
             <button id="reset-app-btn" type="button" class="btn btn--danger" data-i18n="resetApp">resetar aplicação</button>
           </div>
           <p id="settings-status" class="settings-status" hidden></p>
+          <div class="update-check">
+            <button id="check-updates-btn" type="button" class="btn btn--ghost btn--small" data-i18n="checkForUpdates">verificar atualizações</button>
+            <p id="updates-status" class="settings-status" hidden></p>
+          </div>
         </div>
         <div id="about-panel" data-settings-panel="about" hidden></div>
         <div id="faq-panel" data-settings-panel="faq" hidden></div>

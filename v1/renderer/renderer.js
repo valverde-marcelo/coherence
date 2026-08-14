@@ -1146,6 +1146,34 @@ window.p2p.on('following-status-update', (list) => {
 })
 
 // =====================================================================
+// UPDATE BANNER (startup check against GitHub Releases)
+// =====================================================================
+
+function showUpdateBanner(result) {
+  const banner = document.getElementById('update-banner')
+  if (!banner) return
+  const text = document.getElementById('update-banner-text')
+  const link = document.getElementById('update-banner-link')
+  text.textContent = window.coherenceI18n.text('updateAvailable').replace('{version}', result.latest)
+  link.textContent = window.coherenceI18n.text('updateDownload')
+  link.addEventListener('click', (event) => {
+    event.preventDefault()
+    window.p2p.openExternal(result.url)
+  })
+  document.getElementById('update-banner-close').addEventListener('click', () => { banner.hidden = true })
+  banner.hidden = false
+}
+
+async function checkUpdatesOnStartup() {
+  try {
+    const result = await window.p2p.checkForUpdates()
+    if (result && result.available) showUpdateBanner(result)
+  } catch (err) {
+    // Silent — offline or API unavailable
+  }
+}
+
+// =====================================================================
 // BOOT
 // =====================================================================
 
@@ -1157,4 +1185,5 @@ window.p2p.on('following-status-update', (list) => {
   await loadFollowing()
   await loadFeed()
   startProfilePolling()
+  checkUpdatesOnStartup()
 })()

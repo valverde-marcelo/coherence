@@ -1,0 +1,65 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    name: Test (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: v1/package-lock.json
+      - name: Install dependencies
+        working-directory: v1
+        run: npm ci
+      - name: Run integration tests
+        working-directory: v1
+        run: npm test
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: test-logs
+          path: v1/*.log
+
+  build:
+    name: Build Windows executables
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: v1/package-lock.json
+      - name: Install dependencies
+        working-directory: v1
+        run: npm ci
+      - name: Generate icon
+        working-directory: v1
+        run: npm run make-icon
+      - name: Package (NSIS + Portable)
+        working-directory: v1
+        run: npx electron-builder --win --publish never
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: List artifacts
+        working-directory: v1
+        run: Get-ChildItem dist | Select-Object Name, Length
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            v1/dist/Coherence-Setup-*.exe
+            v1/dist/Coherence-Portable-*.exe
+          generate_release_notes: true

@@ -3,7 +3,7 @@
 const path = require('node:path')
 const fs = require('node:fs')
 const os = require('node:os')
-const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron')
+const { app, BrowserWindow, ipcMain, dialog, shell, net } = require('electron')
 const { P2PNode } = require('./src/p2p-node')
 const {
   publicKeyHexFromIdentity,
@@ -56,6 +56,75 @@ for (const stream of [process.stdout, process.stderr]) {
   }
 }
 
+// =====================================================================
+// Donations (PayPal + crypto)
+// =====================================================================
+// Replace the placeholders with the real PayPal link/hosted button and wallet
+// addresses before release. The About tab renders whatever is configured here.
+const DONATIONS = {
+  // e.g. 'https://paypal.me/marcelo' or a hosted_button_id donate URL
+  paypalUrl: '',
+  // e.g. [{ coin: 'BTC', address: 'bc1q...' }, { coin: 'ETH', address: '0x...' }]
+  crypto: []
+}
+
+// =====================================================================
+// Update checking — GitHub Releases API (public, no hosted service)
+// =====================================================================
+const UPDATE_THROTTLE_MS = 24 * 60 * 60 * 1000 // max 1 check/day per user
+
+function parseVersion(version) {
+  const match = /^v?(\d+)\.(\d+)\.(\d+)/.exec(String(version || '').trim())
+  return match ? match.slice(1).map(Number) : null
+}
+
+function isNewerVersion(latest, current) {
+  const a = parseVersion(latest)
+  const b = parseVersion(current)
+  if (!a || !b) return false
+  for (let i = 0; i < 3; i++) {
+    if (a[i] !== b[i]) return a[i] > b[i]
+  }
+  return false
+}
+
+async function fetchLatestRelease() {
+  const response = await net.fetch(
+    'https://api.github.com/repos/valverde-marcelo/coherence/releases/latest',
+    {
+      headers: {
+        'User-Agent': 'coherence-app',
+        Accept: 'application/vnd.github+json'
+      }
+    }
+  )
+  if (!response.ok) throw new Error('HTTP ' + response.status)
+  const data = await response.json()
+  return {
+    latest: String(data.tag_name || '').replace(/^v/, ''),
+    url: data.html_url || 'https://github.com/valverde-marcelo/coherence/releases/latest'
+  }
+}
+
+async function checkForUpdates({ force = false } = {}) {
+  const current = app.getVersion()
+  try {
+    const lastCheck = readSettings().lastUpdateCheck || 0
+    if (!force && Date.now() - lastCheck < UPDATE_THROTTLE_MS) {
+      return { available: false, current, throttled: true }
+    }
+    const { latest, url } = await fetchLatestRelease()
+    writeSettings({ lastUpdateCheck: Date.now() })
+    return { available: isNewerVersion(latest, current), current, latest, url }
+  } catch (error) {
+    return {
+      available: false,
+      current,
+      error: error && error.message ? error.message : String(error)
+    }
+  }
+}
+
 function settingsFile() {
   return path.join(dataDir, 'settings.json')
 }
@@ -101,7 +170,54 @@ function isNewUserRequested() {
     process.env.npm_config_new_user === '1'
 }
 
-function resolveDataDir() {
+/**
+ * Packaged-app account picker. When there is more than one local account and
+ * the app was launched from the installed .exe (no CLI launcher available),
+ * we show a small window listing the accounts instead of throwing.
+ * Resolves to:
+ *   - the chosen account folder key
+ *   - '__new__' to start the new-account flow
+ *   - null if the user cancelled (the app should exit)
+ */
+function chooseAccountPackaged(keys) {
+  return new Promise((resolve) => {
+    let settled = false
+    const finish = (value) => {
+      if (settled) return
+      settled = true
+      resolve(value)
+    }
+    const picker = new BrowserWindow({
+      width: 460,
+      height: 420,
+      resizable: false,
+      minimizable: false,
+      maximizable: false,
+      title: 'Coherence',
+      backgroundColor: '#0d1117',
+      show: false,
+      webPreferences: {
+        preload: path.join(__dirname, 'picker-preload.js'),
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true
+      }
+    })
+    picker.once('ready-to-show', () => picker.show())
+    picker.on('closed', () => finish(null))
+    picker.webContents.on('did-finish-load', () => {
+      picker.webContents.send('picker:accounts', keys)
+    })
+    ipcMain.once('picker:choose', (_evt, key) => finish(key))
+    ipcMain.once('picker:cancel', () => finish(null))
+    picker.loadFile(path.join(__dirname, 'renderer', 'picker.html')).catch((err) => {
+      console.error('[Picker]', err)
+      finish(null)
+    })
+  })
+}
+
+async function resolveDataDir() {
   migrateLegacyData(dataRoot)
   const requestedKey = parseUserKeyArg()
   const newUserRequested = isNewUserRequested()
@@ -117,7 +233,17 @@ function resolveDataDir() {
   } else if (keys.length === 1) {
     dataDir = userDataDir(dataRoot, keys[0])
   } else if (keys.length > 1 && !newUserRequested) {
-    throw new Error('Há mais de um usuário local. Inicie com --user-key <chave-publica> ou --new-user.')
+    if (app.isPackaged) {
+      const chosen = await chooseAccountPackaged(keys)
+      if (chosen === null) {
+        dataDir = null // cancelled — main() exits
+        app.quit()
+        return
+      }
+      dataDir = chosen === '__new__' ? dataRoot : userDataDir(dataRoot, chosen)
+    } else {
+      throw new Error('Há mais de um usuário local. Inicie com --user-key <chave-publica> ou --new-user.')
+    }
   } else {
     dataDir = dataRoot
   }
@@ -372,10 +498,15 @@ function registerIpcHandlers() {
     }
   })
   ipcMain.handle('get-app-version', () => app.getVersion())
-  ipcMain.handle('get-donation-qr', async () => {
+  ipcMain.handle('get-donation-info', () => DONATIONS)
+  ipcMain.handle('get-donation-qr', async (_evt, content) => {
     const QRCode = require('qrcode')
-    return QRCode.toDataURL('https://github.com/valverde-marcelo/coherence', { width: 180, margin: 1 })
+    const text = typeof content === 'string' && content
+      ? content
+      : 'https://github.com/valverde-marcelo/coherence'
+    return QRCode.toDataURL(text, { width: 180, margin: 1 })
   })
+  ipcMain.handle('check-for-updates', (_evt, opts) => checkForUpdates(opts || {}))
   ipcMain.handle('open-external', (_event, url) => {
     if (typeof url !== 'string' || !/^https:\/\//i.test(url)) throw new Error('URL externa inválida.')
     return shell.openExternal(url)
@@ -384,11 +515,12 @@ function registerIpcHandlers() {
 
 async function main() {
   dataRoot = path.join(app.getPath('documents'), 'coherence-data')
-  resolveDataDir()
+  await app.whenReady()
+  await resolveDataDir()
+  if (dataDir == null) return // cancelled the account picker
   configureElectronDataPaths()
 
   registerIpcHandlers()
-  await app.whenReady()
   if (
     fs.existsSync(path.join(dataDir, 'identity.json')) &&
     isEstablished(dataDir)
