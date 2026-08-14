@@ -697,6 +697,104 @@ button, input, textarea {
 
 .profile-view-links a:hover { text-decoration: underline; }
 
+/* Profile View — Social stats (Seguindo / Seguidores) */
+.profile-social-stats {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 14px;
+}
+
+.profile-social-stat {
+  background: var(--panel-raised);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 12px;
+  padding: 4px 12px;
+  cursor: pointer;
+  transition: color 120ms ease, border-color 120ms ease;
+}
+
+.profile-social-stat:hover {
+  color: var(--relay);
+  border-color: var(--relay-dim);
+}
+
+.profile-social-stat.is-active {
+  color: var(--relay);
+  border-color: var(--relay);
+}
+
+.profile-social-panel {
+  margin-bottom: 20px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 12px 16px;
+  background: var(--panel);
+}
+
+.profile-social-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.profile-social-list {
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.profile-social-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.profile-social-item:last-child { border-bottom: none; }
+
+.profile-social-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: linear-gradient(135deg, var(--panel-raised), var(--line));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: var(--relay);
+}
+
+.profile-social-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.profile-social-name {
+  color: var(--relay);
+  font-size: 13px;
+  cursor: pointer;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-social-name:hover { text-decoration: underline; }
+
+.profile-social-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
 .profile-view-posts {
   margin-top: 20px;
 }

@@ -69,6 +69,9 @@ let currentFollowingList = [] // Cache of the following list with status
 let statusUpdateInterval = null
 let profileCache = {} // Profile cache to avoid multiple requests
 let currentViewingProfileKey = null // Key of the profile being viewed
+let profileSocialData = null // { following, followers, ... } of the viewed user (profile view)
+let profileSocialType = null // 'following' | 'followers' | null — which social list is open
+let profileSocialPanel = null // Panel element with the social list (profile view)
 
 // =====================================================================
 // UTILITIES
@@ -283,6 +286,15 @@ async function showProfileView(pubKeyHex) {
     if (profile) profileCache[pubKeyHex] = profile
     
     const posts = await window.p2p.getPostsOf(pubKeyHex)
+
+    // Social graph (who this user follows / who follows them) — for the
+    // "Seguindo / Seguidores" counts and lists.
+    let social = null
+    try {
+      social = await window.p2p.getUserSocial(pubKeyHex)
+    } catch (err) {
+      console.error('Erro ao carregar grafo social:', err)
+    }
     
     if (!profile) {
       console.warn('Perfil não disponível ainda')
@@ -297,6 +309,9 @@ async function showProfileView(pubKeyHex) {
 
     // Render profile
     els.profileView.innerHTML = ''
+    profileSocialType = null
+    profileSocialPanel = null
+    profileSocialData = social
     
     const header = document.createElement('div')
     header.className = 'profile-view-header'
@@ -363,8 +378,16 @@ async function showProfileView(pubKeyHex) {
       info.appendChild(linksDiv)
     }
     
+    // Social stats (Seguindo / Seguidores counts + list trigger)
+    if (social) {
+      renderProfileSocialStats(info, social)
+    }
+    
     header.appendChild(info)
     els.profileView.appendChild(header)
+    
+    // Social list panel (hidden until a stat is clicked)
+    renderProfileSocialList()
     
     // Posts
     if (posts && posts.length > 0) {
@@ -408,6 +431,158 @@ async function showProfileView(pubKeyHex) {
   } catch (err) {
     console.error('Erro ao exibir perfil:', err)
   }
+}
+
+// =====================================================================
+// PROFILE VIEW — SOCIAL GRAPH (Seguindo / Seguidores)
+// =====================================================================
+
+/** Renders the "seguindo N · seguidores N" clickable stats into the profile info. */
+function renderProfileSocialStats(info, social) {
+  if (!social) return
+
+  const statsRow = document.createElement('div')
+  statsRow.className = 'profile-social-stats'
+
+  const makeStat = (label, count, type) => {
+    const btn = document.createElement('button')
+    btn.type = 'button'
+    btn.className = 'profile-social-stat'
+    btn.textContent = `${label} ${count}`
+    btn.addEventListener('click', () => {
+      // Toggle the clicked list (clicking again closes it)
+      profileSocialType = profileSocialType === type ? null : type
+      renderProfileSocialList()
+      statsRow.querySelectorAll('.profile-social-stat').forEach((s) => {
+        s.classList.toggle('is-active', s === btn && profileSocialType === type)
+      })
+    })
+    return btn
+  }
+
+  statsRow.appendChild(makeStat('seguindo', social.following.length, 'following'))
+  statsRow.appendChild(makeStat('seguidores', social.followers.length, 'followers'))
+  info.appendChild(statsRow)
+}
+
+/** Renders (or updates) the social list panel inside the profile view. */
+function renderProfileSocialList() {
+  const social = profileSocialData
+  if (!social) return
+
+  if (!profileSocialPanel) {
+    profileSocialPanel = document.createElement('div')
+    profileSocialPanel.className = 'profile-social-panel'
+    els.profileView.appendChild(profileSocialPanel)
+  }
+
+  const type = profileSocialType
+  profileSocialPanel.hidden = !type
+  if (!type) return
+
+  const keys = type === 'following' ? social.following : social.followers
+  const label = type === 'following' ? 'seguindo' : 'seguidores'
+
+  profileSocialPanel.innerHTML = ''
+
+  const head = document.createElement('div')
+  head.className = 'profile-social-panel-head'
+  const titleEl = document.createElement('div')
+  titleEl.className = 'eyebrow'
+  titleEl.textContent = `${label} (${keys.length})`
+  const closeBtn = document.createElement('button')
+  closeBtn.type = 'button'
+  closeBtn.className = 'btn btn--ghost btn--tiny'
+  closeBtn.title = 'fechar'
+  closeBtn.textContent = '✕'
+  closeBtn.addEventListener('click', () => {
+    profileSocialType = null
+    renderProfileSocialList()
+    els.profileView.querySelectorAll('.profile-social-stat').forEach((s) => s.classList.remove('is-active'))
+  })
+  head.appendChild(titleEl)
+  head.appendChild(closeBtn)
+  profileSocialPanel.appendChild(head)
+
+  const listEl = document.createElement('div')
+  listEl.className = 'profile-social-list'
+  if (keys.length === 0) {
+    listEl.innerHTML = '<p style="font-size: 12px; color: var(--muted); padding: 8px 0;">nenhum usuário aqui ainda</p>'
+  } else {
+    for (const key of keys) listEl.appendChild(renderProfileSocialItem(key))
+  }
+  profileSocialPanel.appendChild(listEl)
+}
+
+/** Builds a single user row in the social list (navigate to profile / follow). */
+function renderProfileSocialItem(key) {
+  const item = document.createElement('div')
+  item.className = 'profile-social-item'
+
+  const avatarEl = document.createElement('span')
+  avatarEl.className = 'profile-social-avatar'
+  avatarEl.textContent = '?'
+
+  const nameEl = document.createElement('span')
+  nameEl.className = 'profile-social-name'
+  nameEl.title = key
+  nameEl.textContent = shortKey(key)
+  nameEl.addEventListener('click', () => showProfileView(key))
+
+  // Load name + avatar asynchronously
+  ;(async () => {
+    try {
+      const p = await window.p2p.getProfileOf(key)
+      if (!p) return
+      if (p.avatar) {
+        const img = document.createElement('img')
+        img.src = `data:${p.avatar.mime};base64,${p.avatar.dataBase64}`
+        avatarEl.textContent = ''
+        avatarEl.appendChild(img)
+      } else if (p.nome) {
+        avatarEl.textContent = getInitials(p.nome)
+      }
+      if (p.nome) nameEl.textContent = p.nome
+    } catch (err) {
+      // Keep the short key as fallback
+    }
+  })()
+
+  const actions = document.createElement('span')
+  actions.className = 'profile-social-actions'
+
+  const viewBtn = document.createElement('button')
+  viewBtn.type = 'button'
+  viewBtn.className = 'btn btn--ghost btn--tiny'
+  viewBtn.textContent = 'ver perfil'
+  viewBtn.addEventListener('click', () => showProfileView(key))
+  actions.appendChild(viewBtn)
+
+  if (key !== myKey && !currentFollowingList.some((p) => p.publicKeyHex === key)) {
+    const followBtn = document.createElement('button')
+    followBtn.type = 'button'
+    followBtn.className = 'btn btn--accent btn--tiny'
+    followBtn.textContent = 'seguir'
+    followBtn.addEventListener('click', async (evt) => {
+      evt.stopPropagation()
+      try {
+        await window.p2p.follow(key)
+        delete profileCache[key]
+        followBtn.textContent = '✓ seguindo'
+        followBtn.disabled = true
+        await loadFollowing()
+        await loadFeed()
+      } catch (err) {
+        console.error('Erro ao seguir:', err)
+      }
+    })
+    actions.appendChild(followBtn)
+  }
+
+  item.appendChild(avatarEl)
+  item.appendChild(nameEl)
+  item.appendChild(actions)
+  return item
 }
 
 function showFeedView() {

@@ -1150,6 +1150,73 @@ class P2PNode extends EventEmitter {
   }
 
   /**
+   * Returns the SOCIAL GRAPH of a user: who they follow (the followList stored
+   * in their own profile) and who follows them (the followers!<pubkey> records
+   * in their own Hyperbee). Cores are public in the P2P model, so this reads
+   * the user's own bee directly — the same path used by the transitive search.
+   *
+   * @param {string} pubKeyHex - the user whose social graph we want
+   * @returns {Promise<{publicKeyHex, nome, following: string[], followers: string[], sincronizando: boolean}|null>}
+   */
+  async getUserSocial(pubKeyHex) {
+    return this._runOperation(async () => {
+      // My own social graph — read directly from my bee.
+      if (pubKeyHex === this.myPublicKeyHex) {
+        const myProfile = await this.myBee.get('profile')
+        const value = myProfile && myProfile.value
+        const following = (value && Array.isArray(value.followList)) ? value.followList : []
+        const followerRecords = await this._loadFollowersFromRecords()
+        return {
+          publicKeyHex: this.myPublicKeyHex,
+          nome: (value && value.nome) || null,
+          following,
+          followers: followerRecords.map((f) => f.publicKeyHex),
+          sincronizando: false
+        }
+      }
+
+      // Other users: open their core on demand if not loaded yet (same path as
+      // the transitive search, no follow-request is sent).
+      let entry = this.followed.get(pubKeyHex) || this.followerDataCache.get(pubKeyHex)
+      if (!entry) {
+        try {
+          entry = await this._loadFollowerData(pubKeyHex, true)
+        } catch (err) {
+          return null
+        }
+      }
+      if (!entry) return null
+
+      const profileResult = await withTimeout(entry.bee.get('profile'), this.readTimeoutMs, null)
+      const value = profileResult && profileResult.value
+      const following = (value && Array.isArray(value.followList)) ? value.followList : []
+
+      // Followers of this user (followers!<pubkey> records in their bee).
+      let followers = []
+      try {
+        const stream = entry.bee.createReadStream({
+          gte: FOLLOWERS_PREFIX,
+          lt: FOLLOWERS_PREFIX + '\uffff'
+        })
+        const records = await collectWithTimeout(stream, this.readTimeoutMs)
+        followers = records
+          .filter((e) => e.value && e.value.isActive)
+          .map((e) => pubKeyFromFollowerKey(e.key))
+      } catch (err) {
+        // Partial/offline copy — return what we have.
+      }
+
+      return {
+        publicKeyHex: pubKeyHex,
+        nome: value && value.nome,
+        following,
+        followers,
+        sincronizando: !value || value.nome === undefined
+      }
+    })
+  }
+
+  /**
    * Searches users TRANSITIVELY over the follow graph.
    *
    * Starting from who this node follows (degree 1) and its followers, it walks
