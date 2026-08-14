@@ -27,7 +27,7 @@ const requestedKeyArg = args.find((arg) => arg.startsWith('--user-key='))
 const requestedKey = requestedKeyArg ? requestedKeyArg.slice(11).toLowerCase() : null
 
 if (requestedKey && !/^[0-9a-f]{64}$/i.test(requestedKey)) {
-  console.error('❌ --user-key precisa ser uma chave pública hexadecimal de 64 caracteres.')
+  console.error('❌ --user-key must be a 64-character hexadecimal public key.')
   process.exit(1)
 }
 
@@ -59,8 +59,8 @@ async function chooseInstances(instances) {
   if (requestedKey) {
     const match = instances.find((i) => i.key === requestedKey)
     if (!match) {
-      console.error(`❌ Nenhuma instância encontrada para a chave ${requestedKey}.`)
-      console.error('   Instâncias disponíveis:')
+      console.error(`❌ No instance found for key ${requestedKey}.`)
+      console.error('   Available instances:')
       console.error(instanceList(instances))
       process.exit(1)
     }
@@ -73,7 +73,7 @@ async function chooseInstances(instances) {
     allLabel: `⚠️  Resetar TODAS (${instances.length})`
   })
   if (choice.action === 'cancel') {
-    console.log('👋 Nenhuma instância foi resetada.')
+    console.log('👋 No instance was reset.')
     process.exit(0)
   }
   return choice.action === 'all' ? instances : choice.instances
@@ -83,25 +83,25 @@ async function main() {
   const instances = findInstances()
 
   if (instances.length === 0) {
-    console.log('ℹ️  Nenhuma instância encontrada em coherence-data.')
+    console.log('ℹ️  No instance found in coherence-data.')
     process.exit(0)
   }
 
   const toReset = await chooseInstances(instances)
   const dataPaths = pathsForInstances(toReset)
 
-  console.log(`🔄 Limpando dados de ${toReset.length} instância(s):`)
-  dataPaths.forEach((dataPath) => console.log(`📁 Caminho: ${dataPath}`))
+  console.log(`🔄 Clearing data of ${toReset.length} instance(s):`)
+  dataPaths.forEach((dataPath) => console.log(`📁 Path: ${dataPath}`))
 
   const existingPaths = dataPaths.filter((dataPath) => fs.existsSync(dataPath))
 
   if (existingPaths.length === 0) {
-    console.log('✅ Nenhum dado para limpar (pasta não existe)')
+    console.log('✅ No data to clear (folder does not exist)')
     process.exit(0)
   }
 
   if (!(await confirmDestructive())) {
-    console.log('👋 Operação cancelada. Nenhum dado foi removido.')
+    console.log('👋 Operation canceled. No data was removed.')
     process.exit(0)
   }
 
@@ -109,12 +109,12 @@ async function main() {
     existingPaths.forEach((dataPath) => {
       fs.rmSync(dataPath, { recursive: true, force: true })
     })
-    console.log('✅ Dados removidos com sucesso!')
-    console.log('🆕 A aplicação será resetada na próxima inicialização.')
-    console.log('⏳ Execute: npm start')
+    console.log('✅ Data removed successfully!')
+    console.log('🆕 The application will be reset on the next startup.')
+    console.log('⏳ Run: npm start')
     process.exit(0)
   } catch (err) {
-    console.error('❌ Erro ao limpar dados:', err.message)
+    console.error('❌ Error clearing data:', err.message)
     process.exit(1)
   }
 }

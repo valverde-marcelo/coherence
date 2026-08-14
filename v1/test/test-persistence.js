@@ -50,11 +50,11 @@ async function waitUntil(check, timeout = 10000) {
   const following = (await node.getMyProfile()).followList
   const followingProfiles = await node.getFollowingList()
 
-  console.log('Chave pública igual após reiniciar?', sameKey)
-  console.log('Nome do perfil preservado?', profile.nome === 'Persistente')
-  console.log('Post próprio preservado?', feed.some((p) => p.texto === 'este post precisa sobreviver a um reinício'))
-  console.log('Lista de quem segue preservada?', following.includes(friend.myPublicKeyHex))
-  console.log('Perfil de quem segue resolvido após reinício?', followingProfiles.some((p) =>
+  console.log('Same public key after restart?', sameKey)
+  console.log('Profile name preserved?', profile.nome === 'Persistente')
+  console.log('Own post preserved?', feed.some((p) => p.texto === 'este post precisa sobreviver a um reinício'))
+  console.log('Following list preserved?', following.includes(friend.myPublicKeyHex))
+  console.log('Followed profile resolved after restart?', followingProfiles.some((p) =>
     p.publicKeyHex === friend.myPublicKeyHex && p.nome
   ))
 
@@ -67,9 +67,9 @@ async function waitUntil(check, timeout = 10000) {
   await friend.stop()
   await testnet.destroy()
 
-  console.log('\nRESULTADO:', ok ? 'PASSOU' : 'FALHOU')
+  console.log('\nRESULT:', ok ? 'PASS' : 'FAIL')
   process.exit(ok ? 0 : 1)
 })().catch((err) => {
-  console.error('ERRO NO TESTE:', err)
+  console.error('TEST ERROR:', err)
   process.exit(1)
 })

@@ -34,15 +34,15 @@ function tmpDir(name) {
   const post = await fresh.publishPost({ tipo: 'texto', texto: 'primeiro post depois do zero' })
   const startedFromZero = post.texto === 'primeiro post depois do zero'
 
-  console.log('Recovery sem seeder continua aguardando?', keepsTrying)
-  console.log('Identity.json foi preservado?', fs.existsSync(identityPath))
-  console.log('Primeiro post no novo core?', startedFromZero)
-  console.log('\nRESULTADO:', keepsTrying && startedFromZero ? 'PASSOU' : 'FALHOU')
+  console.log('Recovery without seeder keeps waiting?', keepsTrying)
+  console.log('Identity.json was preserved?', fs.existsSync(identityPath))
+  console.log('First post on the new core?', startedFromZero)
+  console.log('\nRESULT:', keepsTrying && startedFromZero ? 'PASS' : 'FAIL')
 
   await fresh.stop()
   await testnet.destroy()
   process.exit(keepsTrying && startedFromZero ? 0 : 1)
 })().catch((error) => {
-  console.error('ERRO NO TESTE:', error)
+  console.error('TEST ERROR:', error)
   process.exit(1)
 })

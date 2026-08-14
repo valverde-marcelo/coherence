@@ -67,14 +67,14 @@ async function waitUntil(check, { timeout = 12000, interval = 150 } = {}) {
     const followers = await bob.getFollowers()
     return followers.some((f) => f.publicKeyHex === alice.myPublicKeyHex)
   }, { timeout: 15000 })
-  console.log('Bob registrou Alice como seguidora?', bobHasAlice)
+  console.log('Bob registered Alice as a follower?', bobHasAlice)
 
   // Carol registers Bob as a follower (correct)
   const carolHasBob = await waitUntil(async () => {
     const followers = await carol.getFollowers()
     return followers.some((f) => f.publicKeyHex === bob.myPublicKeyHex)
   }, { timeout: 15000 })
-  console.log('Carol registrou Bob como seguidor?', carolHasBob)
+  console.log('Carol registered Bob as a follower?', carolHasBob)
 
   // Ensures the bug's topology: Alice and Carol connected in Bob's core
   // (Carol joined Bob's topic via follower auto-load).
@@ -82,14 +82,14 @@ async function waitUntil(check, { timeout = 12000, interval = 150 } = {}) {
     const entry = alice.followed.get(bob.myPublicKeyHex)
     return entry && entry.core.peers.length >= 2
   }, { timeout: 15000 })
-  console.log('Alice e Carol no tópico do core de Bob (topologia do bug)?', topology)
+  console.log('Alice and Carol on Bob\'s core topic (bug topology)?', topology)
 
   // Waits a while for any "leaked" follow-request to reach Carol.
   await new Promise((r) => setTimeout(r, 4000))
   const carolFollowers = await carol.getFollowers()
-  console.log('Seguidores da Carol:', carolFollowers.map((f) => f.publicKeyHex.slice(0, 12)).join(', ') || '(nenhum)')
+  console.log('Carol followers:', carolFollowers.map((f) => f.publicKeyHex.slice(0, 12)).join(', ') || '(none)')
   const carolHasAlice = carolFollowers.some((f) => f.publicKeyHex === alice.myPublicKeyHex)
-  console.log('Carol registrou Alice (NÃO deveria)?', carolHasAlice)
+  console.log('Carol registered Alice (should NOT)?', carolHasAlice)
 
   const ok = bobHasAlice && carolHasBob && topology && !carolHasAlice
 
@@ -98,9 +98,9 @@ async function waitUntil(check, { timeout = 12000, interval = 150 } = {}) {
   await carol.stop().catch(() => {})
   await testnet.destroy().catch(() => {})
 
-  console.log('\nRESULTADO:', ok ? 'PASSOU' : 'FALHOU')
+  console.log('\nRESULT:', ok ? 'PASS' : 'FAIL')
   process.exit(ok ? 0 : 1)
 })().catch((err) => {
-  console.error('ERRO NO TESTE:', err)
+  console.error('TEST ERROR:', err)
   process.exit(1)
 })

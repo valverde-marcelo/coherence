@@ -94,14 +94,14 @@ swarm.on('connection', (socket, peerInfo) => {
   // low-level UDX stream, accessible via socket.rawStream.
   const host = socket.rawStream?.remoteHost || 'desconhecido'
   const port = socket.rawStream?.remotePort
-  const papel = peerInfo.client ? 'cliente' : 'servidor'
-  console.log(`\n⚡ [P2P Direct Engine] Nova conexão estabelecida via Hole Punching/UPnP! IP: ${host}${port ? ':' + port : ''} (papel: ${papel})`)
+  const papel = peerInfo.client ? 'client' : 'server'
+  console.log(`\n⚡ [P2P Direct Engine] New connection established via Hole Punching/UPnP! IP: ${host}${port ? ':' + port : ''} (role: ${papel})`)
 
   // When the remote node asks for the page, we send the signed data
   socket.on('data', (data) => {
     const msg = data.toString()
     if (msg === 'GET_PROFILE') {
-      console.log('📤 [P2P] Servindo página pessoal para o visitante...')
+      console.log('📤 [P2P] Serving personal page to the visitor...')
       socket.write(JSON.stringify(getSignedProfile()))
     }
   })
@@ -111,7 +111,7 @@ swarm.on('connection', (socket, peerInfo) => {
 const discovery = swarm.join(topic, { server: true, client: true })
 
 discovery.flushed().then(() => {
-  console.log('✅ [P2P Engine] Nó publicado na rede global via DHT / Hole Punching!')
+  console.log('✅ [P2P Engine] Node published on the global network via DHT / Hole Punching!')
 })
 
 // ====================================================================
@@ -163,7 +163,7 @@ app.get('/visit', async (req, res) => {
   const friendKey = req.query.key.trim()
   if (!friendKey) return res.send("Chave inválida.")
 
-  console.log(`\n🔍 [Hole Punching] Iniciando processo de furamento de NAT para a chave: ${friendKey.slice(0, 15)}...`)
+  console.log(`\n🔍 [Hole Punching] Starting NAT hole punching process for key: ${friendKey.slice(0, 15)}...`)
 
   // Derives the friend's topic from their public key
   const friendTopic = crypto.discoveryKey(Buffer.from(friendKey, 'hex'))
@@ -177,7 +177,7 @@ app.get('/visit', async (req, res) => {
   const onConnection = (socket) => {
     if (connected) return
     connected = true
-    console.log('🎯 [Hole Punching Success] Conexão P2P estabelecida diretamente com a máquina do amigo!')
+    console.log('🎯 [Hole Punching Success] P2P connection established directly with the friend\'s machine!')
 
     // Asks the friend for their profile over the open socket
     socket.write('GET_PROFILE')
@@ -225,5 +225,5 @@ app.get('/visit', async (req, res) => {
 })
 
 app.listen(HTTP_PORT, () => {
-  console.log(`\n🚀 [Nó Local Iniciado] Dashboard disponível em: http://localhost:${HTTP_PORT}`)
+  console.log(`\n🚀 [Local Node Started] Dashboard available at: http://localhost:${HTTP_PORT}`)
 })

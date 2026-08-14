@@ -34,7 +34,7 @@ const forceSelect = args.includes('--select')
 const newUser = args.includes('--new-user')
 
 if (requestedKey && !/^[0-9a-f]{64}$/i.test(requestedKey)) {
-  console.error('❌ --user-key precisa ser uma chave pública hexadecimal de 64 caracteres.')
+  console.error('❌ --user-key must be a 64-character hexadecimal public key.')
   process.exit(1)
 }
 
@@ -51,7 +51,7 @@ function launchElectron(electronArgs = []) {
     stdio: 'inherit'
   })
   child.on('error', (err) => {
-    console.error('❌ Falha ao iniciar o Electron:', err.message)
+    console.error('❌ Failed to start Electron:', err.message)
     process.exit(1)
   })
   child.on('exit', (code, signal) => {
@@ -64,8 +64,8 @@ async function choosePlan(instances) {
   if (requestedKey) {
     const match = instances.find((i) => i.key === requestedKey)
     if (!match) {
-      console.error(`❌ Nenhuma instância encontrada para a chave ${requestedKey}.`)
-      console.error('   Instâncias disponíveis:')
+      console.error(`❌ No instance found for key ${requestedKey}.`)
+      console.error('   Available instances:')
       console.error(instanceList(instances))
       process.exit(1)
     }
@@ -81,7 +81,7 @@ async function choosePlan(instances) {
     allLabel: `✨ Iniciar TODAS (${instances.length})`
   })
   if (choice.action === 'cancel') {
-    console.log('👋 Nenhuma instância foi iniciada.')
+    console.log('👋 No instance was started.')
     process.exit(0)
   }
   if (choice.action === 'all') return { launch: 'all', instances }
@@ -102,7 +102,7 @@ async function main() {
   if (plan.launch === 'direct') {
     launchElectron(plan.args)
   } else if (plan.launch === 'all') {
-    console.log('✨ Abrindo todas as instâncias em segundo plano (equivalente a npm run start-all).')
+    console.log('✨ Opening all instances in the background (equivalent to npm run start-all).')
     launchDetached(plan.instances)
   } else if (plan.launch === 'one') {
     launchElectron(plan.instance.key ? ['--user-key', plan.instance.key] : [])

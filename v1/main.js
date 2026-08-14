@@ -139,7 +139,7 @@ async function startNode({ recovery = false } = {}) {
     const startedNode = new P2PNode({ dataDir })
     node = startedNode
     shuttingDown = false
-    console.log('Iniciando nó P2P com storage em', startedNode.dataDir)
+    console.log('Starting P2P node with storage at', startedNode.dataDir)
     startedNode.on('feed-updated', forward('p2p:event:feed-updated'))
     startedNode.on('profile-updated', forward('p2p:event:profile-updated'))
     startedNode.on('following-changed', forward('p2p:event:following-changed'))
@@ -155,8 +155,8 @@ async function startNode({ recovery = false } = {}) {
     }
     console.log(
       startedNode.lifecycleState === 'recovery'
-        ? 'Nó P2P aguardando recuperação. Chave pública:'
-        : 'Nó P2P pronto. Chave pública:',
+        ? 'P2P node waiting for recovery. Public key:'
+        : 'P2P node ready. Public key:',
       startedNode.myPublicKeyHex
     )
     statusUpdateInterval = setInterval(async () => {
@@ -208,7 +208,7 @@ function removePendingImport() {
   if (!dataDir || dataDir === dataRoot) return
   try {
     fs.rmSync(dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 250 })
-    console.log('[removePendingImport] Importação pendente removida:', dataDir)
+    console.log('[removePendingImport] Pending import removed:', dataDir)
   } catch (error) {
     console.error('[removePendingImport]', error)
   }
@@ -425,6 +425,6 @@ app.on('before-quit', (event) => {
 })
 
 main().catch((err) => {
-  console.error('Falha ao iniciar o app:', err)
+  console.error('Failed to start the app:', err)
   app.quit()
 })

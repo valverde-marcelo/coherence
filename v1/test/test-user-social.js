@@ -58,7 +58,7 @@ async function waitUntil(check, { timeout = 15000, interval = 200 } = {}) {
     const social = await bob.getUserSocial(bob.myPublicKeyHex)
     return social && social.following.includes(carol.myPublicKeyHex)
   })
-  console.log('Bob seguindo Carol (via getUserSocial)?', bobFollowingCarol)
+  console.log('Bob following Carol (via getUserSocial)?', bobFollowingCarol)
 
   // Alice follows Bob → Bob registers Alice as a follower over the network
   await alice.follow(bob.myPublicKeyHex)
@@ -66,7 +66,7 @@ async function waitUntil(check, { timeout = 15000, interval = 200 } = {}) {
     const followers = await bob.getFollowers()
     return followers.some((f) => f.publicKeyHex === alice.myPublicKeyHex)
   })
-  console.log('Bob registrou Alice como seguidora?', bobHasAlice)
+  console.log('Bob registered Alice as a follower?', bobHasAlice)
 
   // Now Bob's social graph should have following=[Carol] and followers=[Alice]
   let bobSocial = null
@@ -83,8 +83,8 @@ async function waitUntil(check, { timeout = 15000, interval = 200 } = {}) {
     aliceSeesBob = await alice.getUserSocial(bob.myPublicKeyHex)
     return aliceSeesBob && aliceSeesBob.following.length >= 1 && aliceSeesBob.followers.length >= 1
   })
-  console.log('Alice lê getUserSocial(Bob) → following:', (aliceSeesBob && aliceSeesBob.following.map((k) => k.slice(0, 8))) || '(null)')
-  console.log('Alice lê getUserSocial(Bob) → followers:', (aliceSeesBob && aliceSeesBob.followers.map((k) => k.slice(0, 8))) || '(null)')
+  console.log('Alice reads getUserSocial(Bob) → following:', (aliceSeesBob && aliceSeesBob.following.map((k) => k.slice(0, 8))) || '(null)')
+  console.log('Alice reads getUserSocial(Bob) → followers:', (aliceSeesBob && aliceSeesBob.followers.map((k) => k.slice(0, 8))) || '(null)')
 
   // Alice's own social
   const aliceSocial = await alice.getUserSocial(alice.myPublicKeyHex)
@@ -101,9 +101,9 @@ async function waitUntil(check, { timeout = 15000, interval = 200 } = {}) {
   await carol.stop().catch(() => {})
   await testnet.destroy().catch(() => {})
 
-  console.log('\nRESULTADO:', ok ? 'PASSOU' : 'FALHOU')
+  console.log('\nRESULT:', ok ? 'PASS' : 'FAIL')
   process.exit(ok ? 0 : 1)
 })().catch((err) => {
-  console.error('ERRO NO TESTE:', err)
+  console.error('TEST ERROR:', err)
   process.exit(1)
 })

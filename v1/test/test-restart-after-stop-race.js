@@ -38,17 +38,17 @@ function tmpDir(name) {
 
   const ok = !statusError || statusError.code !== 'SESSION_CLOSED'
   const restoredPost = post.texto === 'primeiro post depois do restore' && post.autor === restoredKey
-  console.log('Leitura concorrente não produziu SESSION_CLOSED?', ok)
-  console.log('Primeiro post após reabrir foi publicado?', restoredPost)
+  console.log('Concurrent read did not produce SESSION_CLOSED?', ok)
+  console.log('First post after reopening was published?', restoredPost)
 
   await node.stop()
   await friend.stop()
   await testnet.destroy()
 
   const passed = ok && restoredPost
-  console.log('\nRESULTADO:', passed ? 'PASSOU' : 'FALHOU')
+  console.log('\nRESULT:', passed ? 'PASS' : 'FAIL')
   process.exit(passed ? 0 : 1)
 })().catch((err) => {
-  console.error('ERRO NO TESTE:', err)
+  console.error('TEST ERROR:', err)
   process.exit(1)
 })

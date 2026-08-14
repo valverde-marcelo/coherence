@@ -18,7 +18,7 @@ function tmpDir(name) {
   // valid image post
   const tinyPngBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='
   const post = await node.publishPost({ tipo: 'imagem', imagem: { dataBase64: tinyPngBase64, mime: 'image/png' } })
-  console.log('post de imagem aceito:', post.tipo === 'imagem' && post.imagem.mime === 'image/png')
+  console.log('image post accepted:', post.tipo === 'imagem' && post.imagem.mime === 'image/png')
 
   // an image that is too large must be rejected
   let rejected = false
@@ -27,7 +27,7 @@ function tmpDir(name) {
   } catch (err) {
     rejected = /limite/.test(err.message)
   }
-  console.log('imagem grande demais foi rejeitada:', rejected)
+  console.log('oversized image was rejected:', rejected)
 
   // a post without a valid type must fail
   let rejectedTipo = false
@@ -36,7 +36,7 @@ function tmpDir(name) {
   } catch (err) {
     rejectedTipo = true
   }
-  console.log("tipo inválido ('video') foi rejeitado:", rejectedTipo)
+  console.log("invalid type ('video') was rejected:", rejectedTipo)
 
   // following yourself must fail
   let cantFollowSelf = false
@@ -45,17 +45,17 @@ function tmpDir(name) {
   } catch (err) {
     cantFollowSelf = true
   }
-  console.log('seguir a si mesmo foi bloqueado:', cantFollowSelf)
+  console.log('following yourself was blocked:', cantFollowSelf)
 
   // follow + unfollow of an arbitrary hex key (no need to be online)
   const fakeKey = '11'.repeat(32)
   await node.follow(fakeKey)
   const followingAfter = (await node.getMyProfile()).followList
-  console.log('follow adicionou à lista:', followingAfter.includes(fakeKey))
+  console.log('follow added to list:', followingAfter.includes(fakeKey))
 
   await node.unfollow(fakeKey)
   const followingAfterUnfollow = (await node.getMyProfile()).followList
-  console.log('unfollow removeu da lista:', !followingAfterUnfollow.includes(fakeKey))
+  console.log('unfollow removed from list:', !followingAfterUnfollow.includes(fakeKey))
 
   const ok = post.tipo === 'imagem' && rejected && rejectedTipo && cantFollowSelf &&
     followingAfter.includes(fakeKey) && !followingAfterUnfollow.includes(fakeKey)
@@ -63,9 +63,9 @@ function tmpDir(name) {
   await node.stop()
   await testnet.destroy()
 
-  console.log('\nRESULTADO:', ok ? 'PASSOU' : 'FALHOU')
+  console.log('\nRESULT:', ok ? 'PASS' : 'FAIL')
   process.exit(ok ? 0 : 1)
 })().catch((err) => {
-  console.error('ERRO NO TESTE:', err)
+  console.error('TEST ERROR:', err)
   process.exit(1)
 })

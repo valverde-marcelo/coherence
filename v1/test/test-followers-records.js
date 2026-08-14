@@ -120,11 +120,11 @@ async function waitUntil(check, { timeout = 8000, interval = 100 } = {}) {
 
   const ok = scenario_a && scenario_b && scenario_c && scenario_d
   console.log('\n' + '='.repeat(50))
-  console.log('RESULTADO GERAL:', ok ? '✓✓✓ TODOS OS TESTES PASSARAM ✓✓✓' : '✗✗✗ ALGUNS TESTES FALHARAM ✗✗✗')
+  console.log('OVERALL RESULT:', ok ? '✓✓✓ ALL TESTS PASSED ✓✓✓' : '✗✗✗ SOME TESTS FAILED ✗✗✗')
   console.log('='.repeat(50))
 
   process.exit(ok ? 0 : 1)
 })().catch((err) => {
-  console.error('ERRO NO TESTE:', err)
+  console.error('TEST ERROR:', err)
   process.exit(1)
 })

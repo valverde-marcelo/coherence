@@ -40,7 +40,7 @@ async function waitUntil(check, { timeout = 8000, interval = 100 } = {}) {
   await alice.publishPost({ tipo: 'texto', texto: 'Meu primeiro post na rede!' })
   await alice.publishPost({ tipo: 'texto', texto: 'Segundo post, ainda sem seguidores.' })
 
-  console.log('\n-> Bob segue Alice...')
+  console.log('\n-> Bob follows Alice...')
   await bob.follow(alice.myPublicKeyHex)
 
   const synced = await waitUntil(async () => {
@@ -49,13 +49,13 @@ async function waitUntil(check, { timeout = 8000, interval = 100 } = {}) {
   })
 
   const bobFeed = await bob.getFeed()
-  console.log('Feed do Bob após seguir Alice:')
+  console.log('Bob\'s feed after following Alice:')
   for (const p of bobFeed) console.log(' -', p.autor.slice(0, 8), p.tipo, JSON.stringify(p.texto))
 
-  console.log('\nSincronizou os 2 posts da Alice a tempo?', synced)
+  console.log('\nSynced Alice\'s 2 posts in time?', synced)
 
   const aliceProfileFromBob = await bob.getProfile(alice.myPublicKeyHex)
-  console.log('Perfil da Alice, visto pelo Bob:', aliceProfileFromBob)
+  console.log('Alice profile, seen by Bob:', aliceProfileFromBob)
 
   // Alice publishes a NEW post after Bob already followed her -> must arrive via 'append'
   await alice.publishPost({ tipo: 'texto', texto: 'Terceiro post, publicado depois do follow.' })
@@ -63,7 +63,7 @@ async function waitUntil(check, { timeout = 8000, interval = 100 } = {}) {
     const feed = await bob.getFeed()
     return feed.some((p) => p.texto === 'Terceiro post, publicado depois do follow.')
   })
-  console.log('Post publicado após o follow chegou em tempo real?', gotThird)
+  console.log('Post published after the follow arrived in real time?', gotThird)
 
   // Verify that Alice registered Bob as a follower
   const aliceFollowers = await waitUntil(async () => {
@@ -71,10 +71,10 @@ async function waitUntil(check, { timeout = 8000, interval = 100 } = {}) {
     return followers.length === 1
   }, { timeout: 5000 })
   
-  console.log('Alice registrou Bob como seguidor?', aliceFollowers)
+  console.log('Alice registered Bob as a follower?', aliceFollowers)
   if (aliceFollowers) {
     const aliceFollowersList = await alice.getFollowers()
-    console.log('Seguidores da Alice:', aliceFollowersList.map(f => f.publicKeyHex.slice(0, 12)))
+    console.log('Alice followers:', aliceFollowersList.map(f => f.publicKeyHex.slice(0, 12)))
   }
 
   const ok = synced && gotThird && bobFeed.length === 2 &&
@@ -85,9 +85,9 @@ async function waitUntil(check, { timeout = 8000, interval = 100 } = {}) {
   await bob.stop()
   await testnet.destroy()
 
-  console.log('\nRESULTADO:', ok ? 'PASSOU' : 'FALHOU')
+  console.log('\nRESULT:', ok ? 'PASS' : 'FAIL')
   process.exit(ok ? 0 : 1)
 })().catch((err) => {
-  console.error('ERRO NO TESTE:', err)
+  console.error('TEST ERROR:', err)
   process.exit(1)
 })

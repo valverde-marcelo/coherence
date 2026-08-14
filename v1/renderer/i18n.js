@@ -32,6 +32,32 @@ window.coherenceI18n = {
       resetConfirmTitle: 'Resetar aplicação?', resetConfirmMessage: 'Tem certeza que deseja resetar? Isso excluirá permanentemente sua identidade, perfil, posts e configurações. Esta ação não pode ser desfeita.',
       cancel: 'cancelar', confirmReset: 'confirmar reset', resetting: 'Resetando aplicação…', resetError: 'Não foi possível resetar a aplicação.',
       aboutProject: 'projeto', aboutDescription: 'Rede social descentralizada baseada em Hypercore.', aboutVersion: 'versão', aboutGithub: 'repositório no GitHub', aboutStackTitle: 'tecnologia', donationCaption: 'Contribua com o desenvolvimento',
+
+      // Main app UI
+      back: '← voltar', searchUsersTitle: 'pesquisar usuários',
+      searchPlaceholder: 'buscar por nome ou chave…', search: 'pesquisar',
+      composerPlaceholder: 'transmitir algo para a rede…', addImage: '+ imagem', publish: 'publicar',
+      feedEmpty: 'nenhuma transmissão ainda. publique a primeira, ou siga alguém.',
+      following: 'seguindo', followers: 'seguidores',
+      followPlaceholder: 'colar chave pública (hex)', follow: 'seguir',
+      avatarTitle: 'Clique para alterar avatar', copyKeyTitle: 'Clique para copiar para área de trabalho',
+      copied: 'copiado!', connecting: 'conectando…',
+      name: 'nome', bio: 'bio', linksMax: 'links (máximo 3)',
+      addLink: '+ adicionar link', save: 'salvar',
+      copyKey: 'Copiar chave', unfollow: 'Deixar de seguir',
+      noName: 'sem nome', noPeersConnected: 'nenhum peer conectado ainda',
+      peersConnected: '{n} peers conectados', peerConnected: '1 peer conectado',
+      syncing: 'sincronizando…', you: 'você', loading: 'carregando…',
+      userDefault: 'Usuário', copyFullKey: 'Clique para copiar chave completa',
+      posts: 'postagens', noUsersHere: 'nenhum usuário aqui ainda',
+      viewProfile: 'ver perfil', followingDone: '✓ seguindo',
+      noFollowersYet: 'nenhum seguidor ainda',
+      composerErrorEmpty: 'escreva algo ou anexe uma imagem antes de publicar.',
+      searching: 'buscando…', noResults: 'Nenhum resultado encontrado', searchError: 'erro na busca',
+      followingRelation: 'seguindo/seguidor', viaNetwork: 'via rede', viaUser: 'via {name}',
+      addLinkTitle: 'adicionar link', title: 'título', linkTitlePlaceholder: 'ex: Meu Site',
+      url: 'URL', urlPlaceholder: 'https://exemplo.com', add: 'adicionar',
+      fillTitleUrl: 'Preencha título e URL', maxLinksReached: 'Máximo de 3 links atingido', link: 'Link',
       faqItems: [
         ['O que é o Coherence?', 'É uma rede social descentralizada onde cada usuário é dono dos seus dados, armazenados localmente e replicados entre pares.'],
         ['Como meus dados são protegidos?', 'Todos os dados são assinados com sua chave privada. Ninguém pode alterar seus posts ou perfil sem ter sua chave.'],
@@ -75,6 +101,32 @@ window.coherenceI18n = {
       resetConfirmTitle: 'Reset application?', resetConfirmMessage: 'Are you sure you want to reset? This will permanently delete your identity, profile, posts, and settings. This action cannot be undone.',
       cancel: 'cancel', confirmReset: 'confirm reset', resetting: 'Resetting application…', resetError: 'Could not reset the application.',
       aboutProject: 'project', aboutDescription: 'A decentralized social network based on Hypercore.', aboutVersion: 'version', aboutGithub: 'GitHub repository', aboutStackTitle: 'technology', donationCaption: 'Support development',
+
+      // Main app UI
+      back: '← back', searchUsersTitle: 'search users',
+      searchPlaceholder: 'search by name or key…', search: 'search',
+      composerPlaceholder: 'broadcast something to the network…', addImage: '+ image', publish: 'publish',
+      feedEmpty: 'no posts yet. publish the first one, or follow someone.',
+      following: 'following', followers: 'followers',
+      followPlaceholder: 'paste public key (hex)', follow: 'follow',
+      avatarTitle: 'Click to change avatar', copyKeyTitle: 'Click to copy to clipboard',
+      copied: 'copied!', connecting: 'connecting…',
+      name: 'name', bio: 'bio', linksMax: 'links (max 3)',
+      addLink: '+ add link', save: 'save',
+      copyKey: 'Copy key', unfollow: 'Unfollow',
+      noName: 'no name', noPeersConnected: 'no peers connected yet',
+      peersConnected: '{n} peers connected', peerConnected: '1 peer connected',
+      syncing: 'syncing…', you: 'you', loading: 'loading…',
+      userDefault: 'User', copyFullKey: 'Click to copy full key',
+      posts: 'posts', noUsersHere: 'no users here yet',
+      viewProfile: 'view profile', followingDone: '✓ following',
+      noFollowersYet: 'no followers yet',
+      composerErrorEmpty: 'write something or attach an image before publishing.',
+      searching: 'searching…', noResults: 'No results found', searchError: 'search error',
+      followingRelation: 'following/follower', viaNetwork: 'via network', viaUser: 'via {name}',
+      addLinkTitle: 'add link', title: 'title', linkTitlePlaceholder: 'e.g. My Site',
+      url: 'URL', urlPlaceholder: 'https://example.com', add: 'add',
+      fillTitleUrl: 'Fill in title and URL', maxLinksReached: 'Maximum of 3 links reached', link: 'Link',
       faqItems: [
         ['What is Coherence?', 'It is a decentralized social network where each user owns their data, stored locally and replicated between peers.'],
         ['How is my data protected?', 'All data is signed with your private key. Nobody can alter your posts or profile without your key.'],
@@ -99,5 +151,12 @@ window.coherenceI18n = {
     document.querySelectorAll('[data-i18n]').forEach((element) => {
       element.textContent = this.text(element.dataset.i18n)
     })
+    document.querySelectorAll('[data-i18n-placeholder]').forEach((element) => {
+      element.placeholder = this.text(element.dataset.i18nPlaceholder)
+    })
+    document.querySelectorAll('[data-i18n-title]').forEach((element) => {
+      element.title = this.text(element.dataset.i18nTitle)
+    })
+    if (typeof this.onApply === 'function') this.onApply(this.locale)
   }
 }

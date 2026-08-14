@@ -74,19 +74,19 @@ function makeLegacyIdentity(dir) {
   fs.mkdirSync(path.join(rootC, 'deadbeef'), { recursive: true })
   results.C_noop = migrateLegacyData(rootC) === false
 
-  console.log('A) legado com corestore migrou:', results.A_migrated)
-  console.log('A) identity.json movido:', results.A_identityMoved)
-  console.log('A) corestore movido:', results.A_corestoreMoved)
-  console.log('A) recovered.json gravado:', results.A_markerWritten)
+  console.log('A) legacy with corestore migrated:', results.A_migrated)
+  console.log('A) identity.json moved:', results.A_identityMoved)
+  console.log('A) corestore moved:', results.A_corestoreMoved)
+  console.log('A) recovered.json written:', results.A_markerWritten)
   console.log('A) isEstablished:', results.A_established)
-  console.log('A) outro usuário preservado na raiz:', results.A_otherUserKept)
-  console.log('A) outro usuário NÃO movido para dentro:', results.A_otherUserNotInside)
-  console.log('A) raiz limpa:', results.A_rootClean)
-  console.log('A) chaves listadas:', results.A_listedKeys)
-  console.log('B) legado sem corestore migrou:', results.B_migrated)
-  console.log('B) sem marcador:', results.B_noMarker)
-  console.log('B) não estabelecido:', results.B_notEstablished)
-  console.log('C) sem identity.json, noop:', results.C_noop)
+  console.log('A) other user preserved in root:', results.A_otherUserKept)
+  console.log('A) other user NOT moved inside:', results.A_otherUserNotInside)
+  console.log('A) root clean:', results.A_rootClean)
+  console.log('A) keys listed:', results.A_listedKeys)
+  console.log('B) legacy without corestore migrated:', results.B_migrated)
+  console.log('B) no marker:', results.B_noMarker)
+  console.log('B) not established:', results.B_notEstablished)
+  console.log('C) without identity.json, noop:', results.C_noop)
 
   const ok = results.A_migrated &&
     results.A_identityMoved && results.A_corestoreMoved && results.A_markerWritten &&
@@ -96,9 +96,9 @@ function makeLegacyIdentity(dir) {
     results.B_migrated && results.B_noMarker && results.B_notEstablished &&
     results.C_noop
 
-  console.log('\nRESULTADO:', ok ? 'PASSOU' : 'FALHOU')
+  console.log('\nRESULT:', ok ? 'PASS' : 'FAIL')
   process.exit(ok ? 0 : 1)
 })().catch((err) => {
-  console.error('ERRO NO TESTE:', err)
+  console.error('TEST ERROR:', err)
   process.exit(1)
 })

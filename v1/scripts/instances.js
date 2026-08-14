@@ -167,7 +167,7 @@ function promptSelectFallback(options) {
         if (Number.isInteger(n) && n >= 1 && n <= options.length) {
           return done(resolveOption(options[n - 1]))
         }
-        console.log(' ❌ Opção inválida.')
+        console.log(' ❌ Invalid option.')
         ask()
       })
     }
@@ -192,7 +192,7 @@ function launchDetached(instances) {
   const logDir = path.join(os.tmpdir(), 'coherence-start-all')
   fs.mkdirSync(logDir, { recursive: true })
 
-  console.log(`🚀 Iniciando ${instances.length} instância(s):`)
+  console.log(`🚀 Starting ${instances.length} instance(s):`)
   const children = instances.map(({ dataRoot, key }) => {
     const label = key ? `${key.slice(0, 12)}…${key.slice(-8)}` : '(conta legada única)'
     const electronArgs = key ? ['.', '--user-key', key] : ['.']
@@ -211,7 +211,7 @@ function launchDetached(instances) {
       stdio: ['ignore', logFd, logFd]
     })
     child.on('error', (err) => {
-      console.error(`❌ Falha ao iniciar instância ${label}:`, err.message)
+      console.error(`❌ Failed to start instance ${label}:`, err.message)
     })
     return { child, label, logFile, logFd, startedAt: Date.now() }
   })
@@ -227,10 +227,10 @@ function launchDetached(instances) {
     entry.child.on('exit', (code, signal) => {
       const quickExit = Date.now() - entry.startedAt < WATCHDOG_MS
       if (quickExit && code !== 0) {
-        console.error(`⚠️ Instância ${entry.label} encerrou precocemente (exit ${code ?? 'signal ' + signal}).`)
-        console.error(`   Log completo: ${entry.logFile}`)
+        console.error(`⚠️ Instance ${entry.label} exited prematurely (exit ${code ?? 'signal ' + signal}).`)
+        console.error(`   Full log: ${entry.logFile}`)
       } else if (quickExit) {
-        console.log(`ℹ️ Instância ${entry.label} encerrou. Log: ${entry.logFile}`)
+        console.log(`ℹ️ Instance ${entry.label} exited. Log: ${entry.logFile}`)
       }
       remaining -= 1
       if (remaining === 0) finish()
@@ -239,8 +239,8 @@ function launchDetached(instances) {
 
   function finish() {
     clearTimeout(watchdog)
-    console.log('✅ Instâncias lançadas. As janelas abrirão em instantes.')
-    console.log(`   Logs de cada instância: ${logDir}`)
+    console.log('✅ Instances launched. The windows will open shortly.')
+    console.log(`   Logs of each instance: ${logDir}`)
     for (const entry of children) {
       // Detaches the process and descriptors: the parent can exit and the
       // instances keep running (the log fds stay open in the child).

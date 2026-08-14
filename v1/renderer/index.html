@@ -65,7 +65,7 @@
         <div class="identity-name" id="my-name">—</div>
         
         <!-- Avatar Section -->
-        <div id="avatar-section" class="avatar-section" title="Clique para alterar avatar">
+        <div id="avatar-section" class="avatar-section" title="Clique para alterar avatar" data-i18n-title="avatarTitle">
           <div class="avatar-placeholder" id="avatar-display">
             <span class="avatar-initials">?</span>
           </div>
@@ -73,39 +73,39 @@
         </div>
 
         <!-- Public Key Display - Copyable -->
-        <div class="identity-key" id="my-key" title="Clique para copiar para área de trabalho">
+        <div class="identity-key" id="my-key" title="Clique para copiar para área de trabalho" data-i18n-title="copyKeyTitle">
           <span id="key-text">—</span>
-          <span id="copy-feedback" hidden class="copy-feedback">copiado!</span>
+          <span id="copy-feedback" hidden class="copy-feedback" data-i18n="copied">copiado!</span>
         </div>
 
         <!-- Status Indicator -->
         <div class="identity-status">
           <span class="dot dot--online" id="status-dot"></span>
-          <span id="status-text">conectando…</span>
+          <span id="status-text" data-i18n="connecting">conectando…</span>
         </div>
       </div>
 
       <!-- Profile Edit Form -->
       <form class="rail-block" id="profile-form">
         <label class="field">
-          <span>nome</span>
+          <span data-i18n="name">nome</span>
           <input type="text" id="profile-nome" maxlength="60" />
         </label>
         <label class="field">
-          <span>bio</span>
+          <span data-i18n="bio">bio</span>
           <textarea id="profile-bio" maxlength="240" rows="3"></textarea>
         </label>
         
         <!-- Links Manager -->
         <div class="links-section">
-          <div class="eyebrow">links (máximo 3)</div>
+          <div class="eyebrow" data-i18n="linksMax">links (máximo 3)</div>
           <ul class="links-list" id="links-list"></ul>
-          <button type="button" id="add-link-btn" class="btn btn--ghost btn--small">+ adicionar link</button>
+          <button type="button" id="add-link-btn" class="btn btn--ghost btn--small" data-i18n="addLink">+ adicionar link</button>
         </div>
 
         <!-- Save Button -->
         <div class="form-actions">
-          <button type="submit" class="btn btn--accent btn--small">salvar</button>
+          <button type="submit" class="btn btn--accent btn--small" data-i18n="save">salvar</button>
         </div>
       </form>
     </aside>
@@ -114,58 +114,58 @@
     <main class="center-area">
       <!-- Profile View Container (hidden by default) -->
       <div id="profile-view-container" class="profile-view-container" hidden>
-        <button id="back-to-feed-btn" class="btn btn--ghost btn--small">← voltar</button>
+        <button id="back-to-feed-btn" class="btn btn--ghost btn--small" data-i18n="back">← voltar</button>
         <div id="profile-view" class="profile-view"></div>
       </div>
 
       <!-- Search View Container (hidden by default) -->
       <div id="search-view-container" class="search-view-container" hidden>
-        <button id="back-to-feed-from-search-btn" class="btn btn--ghost btn--small">← voltar</button>
-        <div class="eyebrow" style="margin-bottom: 16px;">pesquisar usuários</div>
+        <button id="back-to-feed-from-search-btn" class="btn btn--ghost btn--small" data-i18n="back">← voltar</button>
+        <div class="eyebrow" style="margin-bottom: 16px;" data-i18n="searchUsersTitle">pesquisar usuários</div>
         <div class="search-form">
-          <input type="text" id="search-input" placeholder="buscar por nome ou chave…" />
-          <button id="search-btn" type="button" class="btn btn--accent btn--small">pesquisar</button>
+          <input type="text" id="search-input" placeholder="buscar por nome ou chave…" data-i18n-placeholder="searchPlaceholder" />
+          <button id="search-btn" type="button" class="btn btn--accent btn--small" data-i18n="search">pesquisar</button>
         </div>
         <div id="search-results" class="search-results"></div>
       </div>
 
       <!-- Composer Form (only show when viewing feed) -->
       <form class="composer" id="composer-form">
-        <textarea id="composer-text" placeholder="transmitir algo para a rede…" rows="3"></textarea>
+        <textarea id="composer-text" placeholder="transmitir algo para a rede…" rows="3" data-i18n-placeholder="composerPlaceholder"></textarea>
         <div class="composer-row">
           <label class="composer-image-label">
             <input type="file" id="composer-image" accept="image/*" hidden />
-            <span id="composer-image-name">+ imagem</span>
+            <span id="composer-image-name" data-i18n="addImage">+ imagem</span>
           </label>
-          <button type="submit" class="btn btn--accent">publicar</button>
+          <button type="submit" class="btn btn--accent" data-i18n="publish">publicar</button>
         </div>
         <p class="form-error" id="composer-error" hidden></p>
       </form>
 
       <!-- Feed -->
       <div class="feed" id="feed">
-        <p class="feed-empty" id="feed-empty" hidden>nenhuma transmissão ainda. publique a primeira, ou siga alguém.</p>
+        <p class="feed-empty" id="feed-empty" hidden data-i18n="feedEmpty">nenhuma transmissão ainda. publique a primeira, ou siga alguém.</p>
       </div>
     </main>
 
     <!-- RIGHT SIDEBAR: Following/Followers List -->
     <aside class="right-sidebar">
-      <button id="open-settings-btn" type="button" class="btn btn--ghost btn--small settings-button" title="Configurações">⚙ <span data-i18n="settings">configurações</span></button>
-      <button id="open-search-btn" type="button" class="btn btn--ghost btn--small" style="width: 100%; text-align: left; margin-bottom: 16px;">🔍 pesquisar</button>
+      <button id="open-settings-btn" type="button" class="btn btn--ghost btn--small settings-button" title="Configurações" data-i18n-title="settings">⚙ <span data-i18n="settings">configurações</span></button>
+      <button id="open-search-btn" type="button" class="btn btn--ghost btn--small" style="width: 100%; text-align: left; margin-bottom: 16px;">🔍 <span data-i18n="search">pesquisar</span></button>
       
       <!-- Tabs -->
       <div class="sidebar-tabs">
-        <button id="tab-following" class="tab-btn tab-btn--active">seguindo</button>
-        <button id="tab-followers" class="tab-btn">seguidores</button>
+        <button id="tab-following" class="tab-btn tab-btn--active" data-i18n="following">seguindo</button>
+        <button id="tab-followers" class="tab-btn" data-i18n="followers">seguidores</button>
       </div>
       
       <!-- Following List -->
       <div id="tab-content-following" class="tab-content">
         <div class="rail-block">
-          <div class="eyebrow">seguindo <span id="following-count">(0)</span></div>
+          <div class="eyebrow"><span data-i18n="following">seguindo</span> <span id="following-count">(0)</span></div>
           <form id="follow-form" class="follow-form">
-            <input type="text" id="follow-key" placeholder="colar chave pública (hex)" autocomplete="off" />
-            <button type="submit" class="btn btn--accent btn--small">seguir</button>
+            <input type="text" id="follow-key" placeholder="colar chave pública (hex)" autocomplete="off" data-i18n-placeholder="followPlaceholder" />
+            <button type="submit" class="btn btn--accent btn--small" data-i18n="follow">seguir</button>
           </form>
           <p class="form-error" id="follow-error" hidden></p>
           <ul class="following-list" id="following-list"></ul>
@@ -175,7 +175,7 @@
       <!-- Followers List -->
       <div id="tab-content-followers" class="tab-content" hidden>
         <div class="rail-block">
-          <div class="eyebrow">seguidores <span id="followers-count">(0)</span></div>
+          <div class="eyebrow"><span data-i18n="followers">seguidores</span> <span id="followers-count">(0)</span></div>
           <ul class="followers-list" id="followers-list"></ul>
         </div>
       </div>
@@ -233,8 +233,8 @@
         <span class="peer-key"></span>
       </div>
       <div class="peer-actions">
-        <button type="button" class="btn btn--ghost btn--tiny peer-copy-key" title="Copiar chave">📋</button>
-        <button type="button" class="btn btn--ghost btn--tiny peer-unfollow" title="Deixar de seguir">✕</button>
+        <button type="button" class="btn btn--ghost btn--tiny peer-copy-key" title="Copiar chave" data-i18n-title="copyKey">📋</button>
+        <button type="button" class="btn btn--ghost btn--tiny peer-unfollow" title="Deixar de seguir" data-i18n-title="unfollow">✕</button>
       </div>
     </li>
   </template>

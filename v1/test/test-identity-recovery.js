@@ -73,18 +73,18 @@ async function waitUntil(check, { timeout = 12000, interval = 150 } = {}) {
     posts.some((post) => post.texto === 'post preservado pela rede') &&
     followers.some((follower) => follower.publicKeyHex === seeder.myPublicKeyHex)
 
-  console.log('Seeder sincronizou a fonte?', seeded)
-  console.log('Identidade restaurada entrou em ready?', recovered)
-  console.log('Perfil recuperado?', profile && profile.nome === 'Fonte recuperável')
-  console.log('Post recuperado?', posts.some((post) => post.texto === 'post preservado pela rede'))
-  console.log('Seguidor recuperado?', followers.some((follower) => follower.publicKeyHex === seeder.myPublicKeyHex))
-  console.log('\nRESULTADO:', ok ? 'PASSOU' : 'FALHOU')
+  console.log('Seeder synced the source?', seeded)
+  console.log('Restored identity entered ready?', recovered)
+  console.log('Profile recovered?', profile && profile.nome === 'Fonte recuperável')
+  console.log('Post recovered?', posts.some((post) => post.texto === 'post preservado pela rede'))
+  console.log('Follower recovered?', followers.some((follower) => follower.publicKeyHex === seeder.myPublicKeyHex))
+  console.log('\nRESULT:', ok ? 'PASS' : 'FAIL')
 
   await restored.stop()
   await seeder.stop()
   await testnet.destroy()
   process.exit(ok ? 0 : 1)
 })().catch(async (error) => {
-  console.error('ERRO NO TESTE:', error)
+  console.error('TEST ERROR:', error)
   process.exit(1)
 })

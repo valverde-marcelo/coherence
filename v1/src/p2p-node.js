@@ -319,17 +319,17 @@ class P2PNode extends EventEmitter {
               // followed her).
               const targetKey = msg.targetKey
               if (!targetKey) {
-                console.log('[swarm:connection:follow-request] ⚠️ follow-request sem targetKey (versão antiga?); ignorado de:', msg.identityKey.slice(0, 16))
+                console.log('[swarm:connection:follow-request] ⚠️ follow-request without targetKey (old version?); ignored from:', msg.identityKey.slice(0, 16))
                 return true
               }
               if (targetKey !== this.myPublicKeyHex) {
-                console.log('[swarm:connection:follow-request] ⚠️ Ignorado (não é para mim): de', msg.identityKey.slice(0, 16), 'para', targetKey.slice(0, 16))
+                console.log('[swarm:connection:follow-request] ⚠️ Ignored (not for me): from', msg.identityKey.slice(0, 16), 'to', targetKey.slice(0, 16))
                 return true
               }
-              console.log('[swarm:connection:follow-request] ✓ Recebi follow-request de:', msg.identityKey.slice(0, 16))
+              console.log('[swarm:connection:follow-request] ✓ Received follow-request from:', msg.identityKey.slice(0, 16))
               if (this.lifecycleState === 'ready') {
                 this._recordFollower(msg.identityKey).catch((err) => {
-                  console.error('[_recordFollower] Erro:', err.message)
+                  console.error('[_recordFollower] Error:', err.message)
                 })
               }
               return true
@@ -352,7 +352,7 @@ class P2PNode extends EventEmitter {
             // Wait for a follow-request for up to 3 seconds
             const followRequestTimeout = setTimeout(() => {
               socket.removeListener('data', handleFollowRequest)
-              console.log('[swarm:connection:follow-request] ⚠️ Timeout, nenhum follow-request recebido de:', peerIdentityKey.slice(0, 16))
+              console.log('[swarm:connection:follow-request] ⚠️ Timeout, no follow-request received from:', peerIdentityKey.slice(0, 16))
             }, 3000)
 
             // Keep listening for a follow-request
@@ -378,7 +378,7 @@ class P2PNode extends EventEmitter {
       // Timeout if no handshake is received
       const handshakeTimeout = setTimeout(() => {
         if (!handshakeDone) {
-          console.log('[swarm:connection:handshake] ⚠️ Timeout, continuando sem handshake')
+          console.log('[swarm:connection:handshake] ⚠️ Timeout, continuing without handshake')
           socket.removeListener('data', handleData)
           handshakeDone = true
           this._safeReplicate(socket)
@@ -403,7 +403,7 @@ class P2PNode extends EventEmitter {
     try {
       if (this.store && !socket.destroyed) this.store.replicate(socket)
     } catch (err) {
-      console.log('[swarm:connection] ⚠️ Replicação não iniciada (store em transição):', err.message)
+      console.log('[swarm:connection] ⚠️ Replication not started (store in transition):', err.message)
     }
   }
 
@@ -506,8 +506,8 @@ class P2PNode extends EventEmitter {
             lastDownloadedCount = -1
             stallStreak = 0
             stalledNotified = false
-            console.log('[recovery] ⚠️ Nenhum peer conectado cobre length=' + this.myCore.length +
-              ' (seeder caiu?); resetando detecção de stall.')
+            console.log('[recovery] ⚠️ No connected peer covers length=' + this.myCore.length +
+              ' (seeder went down?); resetting stall detection.')
           }
 
           // A seeder appeared and there is data to download — tell the UI to
@@ -550,9 +550,9 @@ class P2PNode extends EventEmitter {
             if (have < len) {
               const peersInfo = this._describeCorePeers(this.myCore)
               const desc = peersInfo.map((p) =>
-                `peer#${p.idx} len=${p.remoteLength} completo=${p.complete} vazio=${p.empty} faltando=${p.missing}`).join(' | ')
-              console.log(`[recovery] download incompleto: ${have}/${len} blocos ` +
-                `(progresso=${progress}, streak=${stallStreak})` + (desc ? ` | ${desc}` : ''))
+                `peer#${p.idx} len=${p.remoteLength} complete=${p.complete} empty=${p.empty} missing=${p.missing}`).join(' | ')
+              console.log(`[recovery] incomplete download: ${have}/${len} blocks ` +
+                `(progress=${progress}, streak=${stallStreak})` + (desc ? ` | ${desc}` : ''))
 
               if (progress) {
                 // There is progress — some peer is sending blocks.
@@ -566,8 +566,8 @@ class P2PNode extends EventEmitter {
                 if (stallStreak >= 3 && !stalledNotified) {
                   stalledNotified = true
                   this.recoveryState = 'stalled'
-                  console.log(`[recovery] ⚠️ Seeder incompleto: recebidos ${have}/${len} blocos.` +
-                    (desc ? ` Peers conectados: ${desc}` : ' (sem peers conectados)'))
+                  console.log(`[recovery] ⚠️ Incomplete seeder: received ${have}/${len} blocks.` +
+                    (desc ? ` Connected peers: ${desc}` : ' (no connected peers)'))
                   this.emit('recovery-updated', {
                     state: this.recoveryState,
                     downloaded: have,
@@ -759,20 +759,20 @@ class P2PNode extends EventEmitter {
         await batch.put(followerKey(followerKeyHex), record)
       }
       await batch.flush()
-      console.log('[_recordFollower] ✓ Registrado:', pubKeyHex.slice(0, 16))
+      console.log('[_recordFollower] ✓ Registered:', pubKeyHex.slice(0, 16))
       
       // Automatically load the new follower's data (profile, posts)
       // This lets the UI show follower info without requiring a follow
       // Uses _loadFollowerData with isFollower: true (not _openFollowed) to avoid sending a follow-request back
       this._loadFollowerData(pubKeyHex, true).catch((err) => {
-        console.log('[_recordFollower] ⚠️ Erro ao carregar dados do seguidor:', err.message)
+        console.log('[_recordFollower] ⚠️ Error loading follower data:', err.message)
       })
     })
     this.followerWritePromise = operation.catch(() => {})
     try {
       await operation
     } catch (err) {
-      console.error('[_recordFollower] Erro ao registrar:', err.message)
+      console.error('[_recordFollower] Error registering:', err.message)
     }
   }
 
@@ -798,7 +798,7 @@ class P2PNode extends EventEmitter {
       
       return followers
     } catch (err) {
-      console.error('[_loadFollowersFromRecords] Erro:', err.message)
+      console.error('[_loadFollowersFromRecords] Error:', err.message)
       return []
     }
   }
@@ -813,7 +813,7 @@ class P2PNode extends EventEmitter {
     // Send a follow-request to all peers connected on this core
     // This explicitly states that we want to be registered as a follower
     this._sendFollowRequestsToPeers(pubKeyHex, entry).catch((err) => {
-      console.log('[_openFollowed] Falha ao enviar follow-requests:', err.message)
+      console.log('[_openFollowed] Failed to send follow-requests:', err.message)
     })
 
     if (waitForProfile) await this._waitForFollowedProfile(entry)
@@ -957,7 +957,7 @@ class P2PNode extends EventEmitter {
     }
 
     if (sent > 0) {
-      console.log('[_sendFollowRequestsToPeers] ✓ Enviado follow-request para', sent, 'peer(s) em:', pubKeyHex.slice(0, 16))
+      console.log('[_sendFollowRequestsToPeers] ✓ Sent follow-request to', sent, 'peer(s) on:', pubKeyHex.slice(0, 16))
     }
   }
 
@@ -986,12 +986,12 @@ class P2PNode extends EventEmitter {
       core.closed
     ) {
       if (attempts === MAX_ATTEMPTS) {
-        console.log('[_sendFollowRequestsToPeers] ⚠️ Limite de tentativas atingido (peer offline?) para:', pubKeyHex.slice(0, 16))
+        console.log('[_sendFollowRequestsToPeers] ⚠️ Attempt limit reached (peer offline?) for:', pubKeyHex.slice(0, 16))
       }
       return
     }
     const delay = Math.min(500 * (attempts + 1), 5000)
-    console.log('[_sendFollowRequestsToPeers] Aguardando peers para:', pubKeyHex.slice(0, 16), '(tentativa', attempts + 1, ')')
+    console.log('[_sendFollowRequestsToPeers] Waiting for peers for:', pubKeyHex.slice(0, 16), '(attempt', attempts + 1, ')')
     await new Promise(resolve => setTimeout(resolve, delay))
     return this._sendFollowRequestsToPeers(pubKeyHex, entry, attempts + 1)
   }
@@ -1094,10 +1094,10 @@ class P2PNode extends EventEmitter {
         entry = this.followerDataCache.get(pubKeyHex)
       }
 
-      console.log('[getProfile] Entry encontrada?', !!entry)
+      console.log('[getProfile] Entry found?', !!entry)
 
       if (!entry) {
-        console.log('[getProfile] ⚠️ Entry não encontrada em this.followed nem em this.followerDataCache')
+        console.log('[getProfile] ⚠️ Entry not found in this.followed nor in this.followerDataCache')
         return null
       }
 
@@ -1111,7 +1111,7 @@ class P2PNode extends EventEmitter {
       const finalProfile = synced
         ? { publicKeyHex: pubKeyHex, ...value }
         : { publicKeyHex: pubKeyHex, sincronizando: true }
-      console.log('[getProfile] ✓ Perfil retornado:', { nome: finalProfile.nome, sincronizando: finalProfile.sincronizando, pubKeyHex: pubKeyHex.slice(0, 16) })
+      console.log('[getProfile] ✓ Profile returned:', { nome: finalProfile.nome, sincronizando: finalProfile.sincronizando, pubKeyHex: pubKeyHex.slice(0, 16) })
       return finalProfile
     })
   }
@@ -1144,7 +1144,7 @@ class P2PNode extends EventEmitter {
   async getFollowers() {
     return this._runOperation(async () => {
       const followers = await this._loadFollowersFromRecords()
-      console.log(`[getFollowers] Retornando ${followers.length} seguidores (chaves: ${followers.map(f => f.publicKeyHex.slice(0, 12)).join(', ')})`)
+      console.log(`[getFollowers] Returning ${followers.length} followers (keys: ${followers.map(f => f.publicKeyHex.slice(0, 12)).join(', ')})`)
       return followers
     })
   }

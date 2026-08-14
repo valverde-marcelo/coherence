@@ -52,13 +52,13 @@ async function main() {
   // B joins A's topic (as a seeder) but downloads ONLY blocks 2..len-1 (partial)
   const entry = await seeder._loadFollowerData(source.myPublicKeyHex)
   const bCore = entry.core
-  bCore.on('download', (i) => console.log(`[B:download-de-A] block=${i}`))
+  bCore.on('download', (i) => console.log(`[B:download-from-A] block=${i}`))
   await waitUntil(async () => bCore.update({ wait: true }).then(() => bCore.length >= sourceLength), { timeout: 15000 })
   console.log('[setup] B core length:', bCore.length, '| source length:', sourceLength)
   const dl = bCore.download({ start: 2, end: bCore.length })
   await dl.done()
   for (let i = 0; i < sourceLength; i++) {
-    console.log(`[setup] B tem bloco ${i} de A?`, await bCore.has(i))
+    console.log(`[setup] B has block ${i} of A?`, await bCore.has(i))
   }
 
   // A stops (offline)
@@ -78,10 +78,10 @@ async function main() {
   const stalled = await waitUntil(() => states.includes('stalled'), { timeout: 80000, interval: 500 })
   const recovered = restored.lifecycleState === 'ready'
 
-  console.log('\n[result] Emitiu state "stalled"?', stalled)
-  console.log('[result] Entrou em ready (não deveria)?', recovered)
+  console.log('\n[result] Emitted state "stalled"?', stalled)
+  console.log('[result] Entered ready (should NOT)?', recovered)
   console.log('[result] states:', states.join(' -> '))
-  console.log('\nRESULTADO:', stalled && !recovered ? 'PASSOU' : 'FALHOU')
+  console.log('\nRESULT:', stalled && !recovered ? 'PASS' : 'FAIL')
 
   await restored.stop().catch(() => {})
   await seeder.stop().catch(() => {})
@@ -89,4 +89,4 @@ async function main() {
   process.exit(stalled && !recovered ? 0 : 1)
 }
 
-main().catch((e) => { console.error('ERRO:', e); process.exit(1) })
+main().catch((e) => { console.error('ERROR:', e); process.exit(1) })

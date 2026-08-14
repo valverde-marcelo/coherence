@@ -64,14 +64,14 @@ async function waitUntil(check, { timeout = 30000, interval = 200 } = {}) {
       const results = await alice.searchUsers('Carol')
       return results.some((r) => r.publicKeyHex === carol.myPublicKeyHex)
     }, { timeout: 40000 })
-    console.log('Alice achou Carol?', foundCarol)
+    console.log('Alice found Carol?', foundCarol)
 
     // Alice acha Dave (grau 3, via Carol)
     const foundDave = await waitUntil(async () => {
       const results = await alice.searchUsers('Dave')
       return results.some((r) => r.publicKeyHex === dave.myPublicKeyHex)
     }, { timeout: 40000 })
-    console.log('Alice achou Dave?', foundDave)
+    console.log('Alice found Dave?', foundDave)
 
     // Details (depth/via) — BFS: Carol at degree 2 via Bob; Dave at degree 3 via Carol
     const carolResults = await alice.searchUsers('Carol')
@@ -89,31 +89,31 @@ async function waitUntil(check, { timeout = 30000, interval = 200 } = {}) {
       const followers = await carol.getFollowers()
       return followers.some((f) => f.publicKeyHex === bob.myPublicKeyHex)
     }, { timeout: 30000 })
-    console.log('Carol registrou Bob?', carolRecordedBob)
+    console.log('Carol registered Bob?', carolRecordedBob)
 
     const bobRecordedAlice = await waitUntil(async () => {
       const followers = await bob.getFollowers()
       return followers.some((f) => f.publicKeyHex === alice.myPublicKeyHex)
     }, { timeout: 30000 })
-    console.log('Bob registrou Alice?', bobRecordedAlice)
+    console.log('Bob registered Alice?', bobRecordedAlice)
 
     const daveFindsBob = await waitUntil(async () => {
       const results = await dave.searchUsers('Bob')
       return results.some((r) => r.publicKeyHex === bob.myPublicKeyHex)
     }, { timeout: 40000 })
-    console.log('Dave achou Bob?', daveFindsBob)
+    console.log('Dave found Bob?', daveFindsBob)
 
     const daveFindsAlice = await waitUntil(async () => {
       const results = await dave.searchUsers('Alice')
       return results.some((r) => r.publicKeyHex === alice.myPublicKeyHex)
     }, { timeout: 40000 })
-    console.log('Dave achou Alice?', daveFindsAlice)
+    console.log('Dave found Alice?', daveFindsAlice)
 
     // Also matches by bio and by key prefix
     const byBio = await alice.searchUsers('remota')
-    console.log('Busca por bio "remota":', byBio.map((r) => r.nome).join(', ') || '(nenhum)')
+    console.log('Search by bio "remota":', byBio.map((r) => r.nome).join(', ') || '(none)')
     const byKey = await alice.searchUsers(carol.myPublicKeyHex.slice(0, 10))
-    console.log('Busca por prefixo de chave:', byKey.map((r) => r.nome).join(', ') || '(nenhum)')
+    console.log('Search by key prefix:', byKey.map((r) => r.nome).join(', ') || '(none)')
 
     const ok = foundCarol && foundDave &&
       carolHit && carolHit.depth === 2 && carolHit.via === bob.myPublicKeyHex &&
@@ -122,7 +122,7 @@ async function waitUntil(check, { timeout = 30000, interval = 200 } = {}) {
       byKey.some((r) => r.publicKeyHex === carol.myPublicKeyHex) &&
       carolRecordedBob && bobRecordedAlice && daveFindsBob && daveFindsAlice
 
-    console.log('\nRESULTADO:', ok ? 'PASSOU' : 'FALHOU')
+    console.log('\nRESULT:', ok ? 'PASS' : 'FAIL')
     process.exit(ok ? 0 : 1)
   } finally {
     await alice.stop().catch(() => {})
@@ -132,6 +132,6 @@ async function waitUntil(check, { timeout = 30000, interval = 200 } = {}) {
     await testnet.destroy().catch(() => {})
   }
 })().catch((err) => {
-  console.error('ERRO NO TESTE:', err)
+  console.error('TEST ERROR:', err)
   process.exit(1)
 })

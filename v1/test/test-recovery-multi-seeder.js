@@ -106,7 +106,7 @@ async function blocksOf(core, length) {
 /** Checks a property over a seeder's blocks (fails if it doesn't hold). */
 async function assertBlocks(entry, length, predicate, label) {
   const have = await blocksOf(entry.core, length)
-  console.log(`  ${label}: blocos=[${have.join(',')}]`)
+  console.log(`  ${label}: blocks=[${have.join(',')}]`)
   if (!predicate(have)) throw new Error(`${label} com blocos inesperados: [${have.join(',')}]`)
 }
 
@@ -132,7 +132,7 @@ async function scenarioA(testnet) {
       { node: complete, getRange: (n) => ({ start: 0, end: n }) }    // complete
     ]
     const { finalLength } = await setupSourceWithSeeders(source, seeders)
-    console.log('[A] length final:', finalLength)
+    console.log('[A] final length:', finalLength)
     await assertBlocks(seeders[1].entry, finalLength, (h) => h.length === finalLength, '[A] completo')
     await assertBlocks(seeders[0].entry, finalLength, (h) => !h.includes(0) && h.length === finalLength - 1, '[A] parcial')
     await source.stop()
@@ -161,7 +161,7 @@ async function scenarioB(testnet) {
     ]
     const { finalLength } = await setupSourceWithSeeders(source, seeders)
     const mid = Math.floor(finalLength / 2)
-    console.log('[B] length final:', finalLength, '| mid:', mid)
+    console.log('[B] final length:', finalLength, '| mid:', mid)
     // the union covers everything: p1 has the start, p2 has the middle and the end
     await assertBlocks(seeders[0].entry, finalLength, (h) => h.includes(0) && !h.includes(mid), '[B] p1')
     await assertBlocks(seeders[1].entry, finalLength, (h) => h.includes(mid) && h.includes(finalLength - 1), '[B] p2')
@@ -191,7 +191,7 @@ async function scenarioC(testnet) {
     ]
     const { finalLength } = await setupSourceWithSeeders(source, seeders)
     const mid = Math.floor(finalLength / 2)
-    console.log('[C] length final:', finalLength, '| mid:', mid)
+    console.log('[C] final length:', finalLength, '| mid:', mid)
     // the `mid` block is missing in BOTH -> gap on the network
     await assertBlocks(seeders[0].entry, finalLength, (h) => h.includes(0) && !h.includes(mid), '[C] p1')
     await assertBlocks(seeders[1].entry, finalLength, (h) => h.includes(finalLength - 1) && !h.includes(mid), '[C] p2')
@@ -230,7 +230,7 @@ async function scenarioD(testnet) {
       { node: partial, getRange: (n) => ({ start: 1, end: n }) }
     ]
     const { finalLength } = await setupSourceWithSeeders(source, seeders)
-    console.log('[D] length final:', finalLength)
+    console.log('[D] final length:', finalLength)
     await assertBlocks(seeders[0].entry, finalLength, (h) => !h.includes(0) && h.length === finalLength - 1, '[D] parcial')
 
     // the source goes offline, but the data stays preserved in source.dataDir
@@ -242,7 +242,7 @@ async function scenarioD(testnet) {
 
     // 1) only the partial seeder -> must stall (stalled)
     const stalled = await waitUntil(() => states.includes('stalled'), { timeout: 70000, interval: 400 })
-    console.log('[D] stalled com parcial?', stalled)
+    console.log('[D] stalled with partial?', stalled)
     if (!stalled) return false
 
     // 2) the owner's device reconnects: the source is stopped (lock released),
@@ -266,15 +266,15 @@ async function scenarioD(testnet) {
   const results = {}
   const run = async (name, fn) => {
     if (only && only !== name) return
-    console.log(`\n=== Cenário ${name} ===`)
+    console.log(`\n=== Scenario ${name} ===`)
     const testnet = await createTestnet(6)
     try {
       const ok = await fn(testnet)
       results[name] = ok
-      console.log(`[${name}] RESULTADO:`, ok ? 'PASSOU' : 'FALHOU')
+      console.log(`[${name}] RESULT:`, ok ? 'PASS' : 'FAIL')
     } catch (err) {
       results[name] = false
-      console.error(`[${name}] ERRO:`, err.message)
+      console.error(`[${name}] ERROR:`, err.message)
       console.error(err.stack)
     } finally {
       await testnet.destroy().catch(() => {})
@@ -284,10 +284,10 @@ async function scenarioD(testnet) {
   await run('B', scenarioB)
   await run('C', scenarioC)
   await run('D', scenarioD)
-  console.log('\n=== RESUMO ===')
-  for (const [name, ok] of Object.entries(results)) console.log(`  ${name}: ${ok ? 'PASSOU' : 'FALHOU'}`)
+  console.log('\n=== SUMMARY ===')
+  for (const [name, ok] of Object.entries(results)) console.log(`  ${name}: ${ok ? 'PASS' : 'FAIL'}`)
   process.exit(Object.values(results).every(Boolean) ? 0 : 1)
 })().catch((err) => {
-  console.error('ERRO NO TESTE:', err)
+  console.error('TEST ERROR:', err)
   process.exit(1)
 })

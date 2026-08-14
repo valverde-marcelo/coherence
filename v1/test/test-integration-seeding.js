@@ -39,16 +39,16 @@ async function waitUntil(check, { timeout = 10000, interval = 150 } = {}) {
   await alice.publishPost({ tipo: 'texto', texto: 'Post 1 da Alice' })
   await alice.publishPost({ tipo: 'texto', texto: 'Post 2 da Alice' })
 
-  console.log('-> Bob segue Alice (vai cachear e semear o perfil dela)...')
+  console.log('-> Bob follows Alice (will cache and seed her profile)...')
   await bob.follow(alice.myPublicKeyHex)
   const bobSynced = await waitUntil(async () => (await bob.getFeed()).length === 2)
-  console.log('Bob sincronizou os posts da Alice?', bobSynced)
+  console.log('Bob synced Alice\'s posts?', bobSynced)
 
-  console.log('-> Alice fica offline...')
+  console.log('-> Alice goes offline...')
   await alice.stop()
   await new Promise((r) => setTimeout(r, 500))
 
-  console.log('-> Carol passa a seguir Alice, com a Alice JÁ offline...')
+  console.log('-> Carol now follows Alice, with Alice ALREADY offline...')
   await carol.follow(alice.myPublicKeyHex)
 
   const carolGotSeededData = await waitUntil(async () => {
@@ -57,11 +57,11 @@ async function waitUntil(check, { timeout = 10000, interval = 150 } = {}) {
   })
 
   const carolFeed = await carol.getFeed()
-  console.log('Feed da Carol (Alice offline, dados vindos do Bob como semeador):')
+  console.log('Carol\'s feed (Alice offline, data coming from Bob as seeder):')
   for (const p of carolFeed) console.log(' -', p.autor.slice(0, 8), JSON.stringify(p.texto))
 
   const carolProfile = await carol.getProfile(alice.myPublicKeyHex)
-  console.log('Perfil da Alice, visto pela Carol (via Bob):', carolProfile)
+  console.log('Alice profile, seen by Carol (via Bob):', carolProfile)
 
   const ok = bobSynced && carolGotSeededData && carolProfile && carolProfile.nome === 'Alice'
 
@@ -69,9 +69,9 @@ async function waitUntil(check, { timeout = 10000, interval = 150 } = {}) {
   await carol.stop()
   await testnet.destroy()
 
-  console.log('\nRESULTADO:', ok ? 'PASSOU (semeadura funcionou com a dona do perfil offline)' : 'FALHOU')
+  console.log('\nRESULT:', ok ? 'PASS (seeding worked with the profile owner offline)' : 'FAIL')
   process.exit(ok ? 0 : 1)
 })().catch((err) => {
-  console.error('ERRO NO TESTE:', err)
+  console.error('TEST ERROR:', err)
   process.exit(1)
 })

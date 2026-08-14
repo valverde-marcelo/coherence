@@ -1,5 +1,7 @@
 'use strict'
 
+const t = (key) => window.coherenceI18n.text(key)
+
 const els = {
   // Identity & Profile
   myName: document.getElementById('my-name'),
@@ -72,6 +74,9 @@ let currentViewingProfileKey = null // Key of the profile being viewed
 let profileSocialData = null // { following, followers, ... } of the viewed user (profile view)
 let profileSocialType = null // 'following' | 'followers' | null — which social list is open
 let profileSocialPanel = null // Panel element with the social list (profile view)
+let profileReturnTarget = 'feed' // 'feed' | 'search' — where "voltar" in the profile view returns to
+let pendingImageName = null // Name of the image currently attached to the composer
+let lastRenderedLocale = null // Locale used by the last refreshMainUI render
 
 // =====================================================================
 // UTILITIES
@@ -82,7 +87,8 @@ function shortKey(key) {
 }
 
 function formatTime(ts) {
-  return new Date(ts).toLocaleString('pt-BR', {
+  const locale = (window.coherenceI18n && window.coherenceI18n.locale) || 'pt-BR'
+  return new Date(ts).toLocaleString(locale, {
     day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
   })
 }
@@ -126,7 +132,7 @@ async function copyToClipboard(text, feedbackEl) {
       setTimeout(() => { feedbackEl.hidden = true }, 1500)
     }
   } catch (err) {
-    console.error('Erro ao copiar para clipboard:', err)
+    console.error('Error copying to clipboard:', err)
   }
 }
 
@@ -136,13 +142,13 @@ async function copyToClipboard(text, feedbackEl) {
 
 function renderIdentity(profile) {
   currentProfile = profile
-  els.myName.textContent = profile.nome || 'sem nome'
+  els.myName.textContent = profile.nome || t('noName')
   els.keyText.textContent = myKey
   els.profileNome.value = profile.nome || ''
   els.profileBio.value = profile.bio || ''
   
   // Avatar
-  const initials = getInitials(profile.nome || 'Usuário')
+  const initials = getInitials(profile.nome || t('userDefault'))
   if (profile.avatar) {
     const img = document.createElement('img')
     img.src = `data:${profile.avatar.mime};base64,${profile.avatar.dataBase64}`
@@ -163,7 +169,7 @@ function renderLinksList() {
     const link = pendingLinks[i]
     const node = els.linkTemplate.content.cloneNode(true)
     const titleEl = node.querySelector('.link-title')
-    titleEl.textContent = link.titulo || 'Link'
+    titleEl.textContent = link.titulo || t('link')
     titleEl.href = link.url
     node.querySelector('.link-remove').addEventListener('click', () => {
       pendingLinks.splice(i, 1)
@@ -177,8 +183,8 @@ async function refreshStatus() {
   try {
     const count = await window.p2p.getPeerCount()
     els.statusText.textContent = count === 0
-      ? 'nenhum peer conectado ainda'
-      : `${count} peer${count === 1 ? '' : 's'} conectado${count === 1 ? '' : 's'}`
+      ? t('noPeersConnected')
+      : t(count === 1 ? 'peerConnected' : 'peersConnected').replace('{n}', String(count))
   } catch (err) {
     // Ignores transient failures (e.g. node null during reset/quit)
   }
@@ -200,7 +206,7 @@ function renderFollowing(list) {
     
     // Name (clickable -> profile view)
     const nameEl = node.querySelector('.peer-name')
-    nameEl.textContent = peer.nome || (peer.sincronizando ? 'sincronizando…' : 'sem nome')
+    nameEl.textContent = peer.nome || (peer.sincronizando ? t('syncing') : t('noName'))
     nameEl.addEventListener('click', () => showProfileView(peer.publicKeyHex))
     
     // Key
@@ -232,10 +238,10 @@ function renderFeed(posts) {
     const isMe = post.autor === myKey
     
     // Fetch the author's name from the cache or use the short key
-    let authorName = isMe ? 'você' : shortKey(post.autor)
+    let authorName = isMe ? t('you') : shortKey(post.autor)
     const cachedProfile = profileCache[post.autor]
     if (cachedProfile && cachedProfile.nome) {
-      authorName = isMe ? 'você' : cachedProfile.nome
+      authorName = isMe ? t('you') : cachedProfile.nome
     }
     
     authorEl.textContent = authorName
@@ -293,12 +299,22 @@ async function showProfileView(pubKeyHex) {
     try {
       social = await window.p2p.getUserSocial(pubKeyHex)
     } catch (err) {
-      console.error('Erro ao carregar grafo social:', err)
+      console.error('Error loading social graph:', err)
     }
     
     if (!profile) {
-      console.warn('Perfil não disponível ainda')
+      console.warn('Profile not available yet')
       // Continue even without a profile, it may be syncing
+    }
+
+    // Determine where "voltar" should return to, based on the view the user came
+    // from: opening a profile from search results goes back to search; from the
+    // feed (or sidebar) it goes back to the feed. Navigating profile → profile
+    // (e.g. via the social lists) keeps the previous target.
+    if (!els.searchViewContainer.hidden) {
+      profileReturnTarget = 'search'
+    } else if (!els.feed.hidden) {
+      profileReturnTarget = 'feed'
     }
 
     // Hide feed and other views, show profile view
@@ -335,7 +351,7 @@ async function showProfileView(pubKeyHex) {
         font-size: 36px;
         color: var(--relay);
       `
-      placeholder.textContent = getInitials(profile.nome || 'Usuário')
+      placeholder.textContent = getInitials(profile.nome || t('userDefault'))
       avatar.appendChild(placeholder)
     }
     header.appendChild(avatar)
@@ -346,14 +362,14 @@ async function showProfileView(pubKeyHex) {
     
     const name = document.createElement('div')
     name.className = 'profile-view-name'
-    name.textContent = profile?.nome || 'carregando…'
+    name.textContent = profile?.nome || t('loading')
     info.appendChild(name)
     
     const key = document.createElement('div')
     key.className = 'profile-view-key'
     key.textContent = shortKey(pubKeyHex)
     key.style.cursor = 'pointer'
-    key.title = 'Clique para copiar chave completa'
+    key.title = t('copyFullKey')
     key.addEventListener('click', () => copyToClipboard(pubKeyHex))
     info.appendChild(key)
     
@@ -396,7 +412,7 @@ async function showProfileView(pubKeyHex) {
       
       const postsTitle = document.createElement('div')
       postsTitle.className = 'eyebrow'
-      postsTitle.textContent = 'postagens'
+      postsTitle.textContent = t('posts')
       postsDiv.appendChild(postsTitle)
       
       const postsFeed = document.createElement('div')
@@ -408,7 +424,7 @@ async function showProfileView(pubKeyHex) {
         
         const node = els.postTemplate.content.cloneNode(true)
         const authorEl = node.querySelector('.post-author')
-        authorEl.textContent = profile.nome || 'sem nome'
+        authorEl.textContent = profile.nome || t('noName')
         authorEl.classList.add('is-me')
         
         node.querySelector('.post-time').textContent = formatTime(post.timestamp)
@@ -429,7 +445,7 @@ async function showProfileView(pubKeyHex) {
     }
     
   } catch (err) {
-    console.error('Erro ao exibir perfil:', err)
+    console.error('Error displaying profile:', err)
   }
 }
 
@@ -460,8 +476,8 @@ function renderProfileSocialStats(info, social) {
     return btn
   }
 
-  statsRow.appendChild(makeStat('seguindo', social.following.length, 'following'))
-  statsRow.appendChild(makeStat('seguidores', social.followers.length, 'followers'))
+  statsRow.appendChild(makeStat(t('following'), social.following.length, 'following'))
+  statsRow.appendChild(makeStat(t('followers'), social.followers.length, 'followers'))
   info.appendChild(statsRow)
 }
 
@@ -481,7 +497,7 @@ function renderProfileSocialList() {
   if (!type) return
 
   const keys = type === 'following' ? social.following : social.followers
-  const label = type === 'following' ? 'seguindo' : 'seguidores'
+  const label = t(type === 'following' ? 'following' : 'followers')
 
   profileSocialPanel.innerHTML = ''
 
@@ -493,7 +509,7 @@ function renderProfileSocialList() {
   const closeBtn = document.createElement('button')
   closeBtn.type = 'button'
   closeBtn.className = 'btn btn--ghost btn--tiny'
-  closeBtn.title = 'fechar'
+  closeBtn.title = t('close')
   closeBtn.textContent = '✕'
   closeBtn.addEventListener('click', () => {
     profileSocialType = null
@@ -507,7 +523,7 @@ function renderProfileSocialList() {
   const listEl = document.createElement('div')
   listEl.className = 'profile-social-list'
   if (keys.length === 0) {
-    listEl.innerHTML = '<p style="font-size: 12px; color: var(--muted); padding: 8px 0;">nenhum usuário aqui ainda</p>'
+    listEl.innerHTML = `<p style="font-size: 12px; color: var(--muted); padding: 8px 0;">${t('noUsersHere')}</p>`
   } else {
     for (const key of keys) listEl.appendChild(renderProfileSocialItem(key))
   }
@@ -554,7 +570,7 @@ function renderProfileSocialItem(key) {
   const viewBtn = document.createElement('button')
   viewBtn.type = 'button'
   viewBtn.className = 'btn btn--ghost btn--tiny'
-  viewBtn.textContent = 'ver perfil'
+  viewBtn.textContent = t('viewProfile')
   viewBtn.addEventListener('click', () => showProfileView(key))
   actions.appendChild(viewBtn)
 
@@ -562,18 +578,18 @@ function renderProfileSocialItem(key) {
     const followBtn = document.createElement('button')
     followBtn.type = 'button'
     followBtn.className = 'btn btn--accent btn--tiny'
-    followBtn.textContent = 'seguir'
+    followBtn.textContent = t('follow')
     followBtn.addEventListener('click', async (evt) => {
       evt.stopPropagation()
       try {
         await window.p2p.follow(key)
         delete profileCache[key]
-        followBtn.textContent = '✓ seguindo'
+        followBtn.textContent = t('followingDone')
         followBtn.disabled = true
         await loadFollowing()
         await loadFeed()
       } catch (err) {
-        console.error('Erro ao seguir:', err)
+        console.error('Error following:', err)
       }
     })
     actions.appendChild(followBtn)
@@ -592,6 +608,35 @@ function showFeedView() {
   els.feed.hidden = false
 }
 
+// Re-renders the dynamic parts of the UI so the whole app reflects the current
+// language. Hooked to window.coherenceI18n.onApply, which fires whenever the
+// locale is applied (e.g. via the settings modal). The [data-i18n] static
+// elements are updated directly by apply(); here we rebuild the dynamic lists
+// and views that are built in JS.
+function refreshMainUI() {
+  if (window.__coherenceSetupActive || !myKey) return
+  const locale = window.coherenceI18n.locale
+  if (locale === lastRenderedLocale) return
+  lastRenderedLocale = locale
+  if (currentProfile) renderIdentity(currentProfile)
+  loadFollowing()
+  if (!els.tabContentFollowers.hidden) loadFollowers()
+  if (!els.searchViewContainer.hidden && els.searchInput.value.trim()) {
+    els.searchBtn.click()
+  } else if (!els.profileViewContainer.hidden && currentViewingProfileKey) {
+    showProfileView(currentViewingProfileKey)
+  } else if (!els.feed.hidden) {
+    loadFeed()
+  }
+  refreshStatus()
+  if (pendingImageName) {
+    els.composerImageName.textContent = pendingImageName
+    els.composerImageName.classList.add('has-image')
+  }
+}
+
+window.coherenceI18n.onApply = () => refreshMainUI()
+
 async function loadIdentity() {
   myKey = await window.p2p.getMyKey()
   const profile = await window.p2p.getProfile()
@@ -605,16 +650,16 @@ async function loadFollowing() {
 }
 
 async function loadFollowers() {
-  console.log('[loadFollowers] INICIANDO...')
+  console.log('[loadFollowers] STARTING...')
   try {
-    console.log('[loadFollowers] Chamando window.p2p.getFollowers()...')
+    console.log('[loadFollowers] Calling window.p2p.getFollowers()...')
     const followers = await window.p2p.getFollowers()
-    console.log('[loadFollowers] Recebido array com', followers.length, 'seguidores:', followers.map(f => f.publicKeyHex.slice(0, 12)).join(', '))
-    console.log('[loadFollowers] Chamando renderFollowers()...')
+    console.log('[loadFollowers] Received array with', followers.length, 'followers:', followers.map(f => f.publicKeyHex.slice(0, 12)).join(', '))
+    console.log('[loadFollowers] Calling renderFollowers()...')
     renderFollowers(followers)
-    console.log('[loadFollowers] CONCLUÍDO')
+    console.log('[loadFollowers] DONE')
   } catch (err) {
-    console.error('Erro ao carregar seguidores:', err)
+    console.error('Error loading followers:', err)
   }
 }
 
@@ -622,10 +667,10 @@ function renderFollowers(followers) {
   els.followersList.innerHTML = ''
   els.followersCount.textContent = `(${followers.length})`
   
-  console.log('[renderFollowers] Renderizando', followers.length, 'seguidores:', followers.map(f => f.publicKeyHex.slice(0, 12)).join(', '))
+  console.log('[renderFollowers] Rendering', followers.length, 'followers:', followers.map(f => f.publicKeyHex.slice(0, 12)).join(', '))
   
   if (followers.length === 0) {
-    els.followersList.innerHTML = '<p style="font-size: 12px; color: var(--muted); margin-top: 8px;">nenhum seguidor ainda</p>'
+    els.followersList.innerHTML = `<p style="font-size: 12px; color: var(--muted); margin-top: 8px;">${t('noFollowersYet')}</p>`
     return
   }
   
@@ -642,20 +687,20 @@ function renderFollowers(followers) {
     // Fetch the follower's name asynchronously
     ;(async () => {
       try {
-        console.log('[renderFollowers] Buscando perfil de:', follower.publicKeyHex.slice(0, 12))
+        console.log('[renderFollowers] Fetching profile of:', follower.publicKeyHex.slice(0, 12))
         const profile = await window.p2p.getProfileOf(follower.publicKeyHex)
         if (profile && profile.nome) {
           nameSpan.textContent = profile.nome
         }
       } catch (err) {
-        console.log('Não foi possível carregar nome do seguidor:', err)
+        console.log('Could not load follower name:', err)
       }
     })()
     
     const copyBtn = document.createElement('button')
     copyBtn.type = 'button'
     copyBtn.className = 'btn btn--ghost btn--tiny'
-    copyBtn.title = 'Copiar chave'
+    copyBtn.title = t('copyKey')
     copyBtn.textContent = '📋'
     
     copyBtn.addEventListener('click', (e) => {
@@ -701,7 +746,7 @@ els.avatarUpload.addEventListener('change', async () => {
     // Save to pending (will be saved with profile)
     currentProfile.avatar = { dataBase64, mime: file.type }
   } catch (err) {
-    console.error('Erro ao processar avatar:', err)
+    console.error('Error processing avatar:', err)
   }
 })
 
@@ -740,25 +785,25 @@ function showLinksModal() {
   
   const title = document.createElement('div')
   title.className = 'eyebrow'
-  title.textContent = 'adicionar link'
+  title.textContent = t('addLinkTitle')
   modalContent.appendChild(title)
   
   const tituloLabel = document.createElement('label')
   tituloLabel.className = 'field'
-  tituloLabel.innerHTML = '<span>título</span>'
+  tituloLabel.innerHTML = `<span>${t('title')}</span>`
   const tituloInput = document.createElement('input')
   tituloInput.type = 'text'
   tituloInput.maxLength = '30'
-  tituloInput.placeholder = 'ex: Meu Site'
+  tituloInput.placeholder = t('linkTitlePlaceholder')
   tituloLabel.appendChild(tituloInput)
   modalContent.appendChild(tituloLabel)
   
   const urlLabel = document.createElement('label')
   urlLabel.className = 'field'
-  urlLabel.innerHTML = '<span>URL</span>'
+  urlLabel.innerHTML = `<span>${t('url')}</span>`
   const urlInput = document.createElement('input')
   urlInput.type = 'text'
-  urlInput.placeholder = 'https://exemplo.com'
+  urlInput.placeholder = t('urlPlaceholder')
   urlLabel.appendChild(urlInput)
   modalContent.appendChild(urlLabel)
   
@@ -769,18 +814,18 @@ function showLinksModal() {
   const addBtn = document.createElement('button')
   addBtn.type = 'button'
   addBtn.className = 'btn btn--accent btn--small'
-  addBtn.textContent = 'adicionar'
+  addBtn.textContent = t('add')
   addBtn.addEventListener('click', () => {
     const titulo = tituloInput.value.trim()
     const url = urlInput.value.trim()
     
     if (!titulo || !url) {
-      alert('Preencha título e URL')
+      alert(t('fillTitleUrl'))
       return
     }
     
     if (pendingLinks.length >= 3) {
-      alert('Máximo de 3 links atingido')
+      alert(t('maxLinksReached'))
       return
     }
     
@@ -793,7 +838,7 @@ function showLinksModal() {
   const cancelBtn = document.createElement('button')
   cancelBtn.type = 'button'
   cancelBtn.className = 'btn btn--ghost btn--small'
-  cancelBtn.textContent = 'cancelar'
+  cancelBtn.textContent = t('cancel')
   cancelBtn.addEventListener('click', () => {
     document.body.removeChild(modal)
   })
@@ -821,7 +866,7 @@ els.profileForm.addEventListener('submit', async (evt) => {
     renderIdentity(profile)
     // Keep the form visible after saving
   } catch (err) {
-    console.error('Erro ao atualizar perfil:', err)
+    console.error('Error updating profile:', err)
   }
 })
 
@@ -850,12 +895,14 @@ els.composerImage.addEventListener('change', async () => {
   const file = els.composerImage.files[0]
   if (!file) {
     pendingImage = null
-    els.composerImageName.textContent = '+ imagem'
+    pendingImageName = null
+    els.composerImageName.textContent = t('addImage')
     els.composerImageName.classList.remove('has-image')
     return
   }
   const dataBase64 = await fileToBase64(file)
   pendingImage = { dataBase64, mime: file.type }
+  pendingImageName = file.name
   els.composerImageName.textContent = file.name
   els.composerImageName.classList.add('has-image')
 })
@@ -867,7 +914,7 @@ els.composerForm.addEventListener('submit', async (evt) => {
 
   const texto = els.composerText.value.trim()
   if (!texto && !pendingImage) {
-    showError(els.composerError, 'escreva algo ou anexe uma imagem antes de publicar.')
+    showError(els.composerError, t('composerErrorEmpty'))
     return
   }
 
@@ -880,7 +927,8 @@ els.composerForm.addEventListener('submit', async (evt) => {
     els.composerText.value = ''
     els.composerImage.value = ''
     pendingImage = null
-    els.composerImageName.textContent = '+ imagem'
+    pendingImageName = null
+    els.composerImageName.textContent = t('addImage')
     els.composerImageName.classList.remove('has-image')
     await loadFeed()
   } catch (err) {
@@ -888,9 +936,18 @@ els.composerForm.addEventListener('submit', async (evt) => {
   }
 })
 
-// Back to Feed from Profile View
+// Back from Profile View — returns to search (when the profile was opened from a
+// search result) or to the feed otherwise.
 els.backToFeedBtn.addEventListener('click', () => {
-  showFeedView()
+  if (profileReturnTarget === 'search') {
+    // Return to the search view, keeping the results list intact
+    els.profileViewContainer.hidden = true
+    els.composerForm.hidden = true
+    els.feed.hidden = true
+    els.searchViewContainer.hidden = false
+  } else {
+    showFeedView()
+  }
   currentViewingProfileKey = null
 })
 
@@ -906,11 +963,11 @@ els.searchBtn.addEventListener('click', async () => {
   const query = els.searchInput.value.trim()
   if (!query) return
 
-  els.searchResults.innerHTML = '<p style="font-size: 12px; color: var(--muted);">buscando…</p>'
+  els.searchResults.innerHTML = `<p style="font-size: 12px; color: var(--muted);">${t('searching')}</p>`
   try {
     const results = await window.p2p.searchUsers(query)
     if (!results || results.length === 0) {
-      els.searchResults.innerHTML = '<p style="font-size: 12px; color: var(--muted);">Nenhum resultado encontrado</p>'
+      els.searchResults.innerHTML = `<p style="font-size: 12px; color: var(--muted);">${t('noResults')}</p>`
       return
     }
 
@@ -920,10 +977,10 @@ els.searchBtn.addEventListener('click', async () => {
     for (const p of currentFollowingList) if (p.nome) keyToName[p.publicKeyHex] = p.nome
 
     const relationOf = (peer) => {
-      if (peer.depth === 0) return 'você'
-      if (peer.depth === 1) return 'seguindo/seguidor'
+      if (peer.depth === 0) return t('you')
+      if (peer.depth === 1) return t('followingRelation')
       const viaName = peer.via && (keyToName[peer.via] || shortKey(peer.via))
-      return viaName ? 'via ' + viaName : 'via rede'
+      return viaName ? t('viaUser').replace('{name}', viaName) : t('viaNetwork')
     }
 
     const resultsDiv = document.createElement('div')
@@ -959,7 +1016,7 @@ els.searchBtn.addEventListener('click', async () => {
       const viewBtn = document.createElement('button')
       viewBtn.type = 'button'
       viewBtn.className = 'btn btn--ghost btn--small'
-      viewBtn.textContent = 'ver perfil'
+      viewBtn.textContent = t('viewProfile')
       viewBtn.addEventListener('click', (evt) => {
         evt.stopPropagation()
         showProfileView(peer.publicKeyHex)
@@ -970,18 +1027,18 @@ els.searchBtn.addEventListener('click', async () => {
         const followBtn = document.createElement('button')
         followBtn.type = 'button'
         followBtn.className = 'btn btn--accent btn--small'
-        followBtn.textContent = 'seguir'
+        followBtn.textContent = t('follow')
         followBtn.addEventListener('click', async (evt) => {
           evt.stopPropagation()
           try {
             await window.p2p.follow(peer.publicKeyHex)
             delete profileCache[peer.publicKeyHex]
-            followBtn.textContent = '✓ seguindo'
+            followBtn.textContent = t('followingDone')
             followBtn.disabled = true
             await loadFollowing()
             await loadFeed()
           } catch (err) {
-            console.error('Erro ao seguir:', err)
+            console.error('Error following:', err)
           }
         })
         actionsEl.appendChild(followBtn)
@@ -995,8 +1052,8 @@ els.searchBtn.addEventListener('click', async () => {
     els.searchResults.innerHTML = ''
     els.searchResults.appendChild(resultsDiv)
   } catch (err) {
-    console.error('Erro na busca:', err)
-    els.searchResults.innerHTML = '<p style="font-size: 12px; color: var(--muted);">erro na busca</p>'
+    console.error('Search error:', err)
+    els.searchResults.innerHTML = `<p style="font-size: 12px; color: var(--muted);">${t('searchError')}</p>`
   }
 })
 
@@ -1025,12 +1082,12 @@ els.tabFollowing.addEventListener('click', () => {
 })
 
 els.tabFollowers.addEventListener('click', () => {
-  console.log('[tab-followers] Click disparado')
+  console.log('[tab-followers] Click fired')
   els.tabFollowers.classList.add('tab-btn--active')
   els.tabFollowing.classList.remove('tab-btn--active')
   els.tabContentFollowers.hidden = false
   els.tabContentFollowing.hidden = true
-  console.log('[tab-followers] Chamando loadFollowers()...')
+  console.log('[tab-followers] Calling loadFollowers()...')
   loadFollowers()
 })
 
@@ -1074,14 +1131,14 @@ window.p2p.on('feed-updated', loadFeed)
 window.p2p.on('profile-updated', loadIdentity)
 window.p2p.on('following-changed', () => { loadFollowing(); loadFeed() })
 window.p2p.on('peers-changed', () => {
-  console.log('[peers-changed] evento disparado')
+  console.log('[peers-changed] event fired')
   refreshStatus()
   // If the followers tab is visible, update it
   if (!els.tabContentFollowers.hidden) {
-    console.log('[peers-changed] Aba de seguidores está visível, chamando loadFollowers()')
+    console.log('[peers-changed] Followers tab is visible, calling loadFollowers()')
     loadFollowers()
   } else {
-    console.log('[peers-changed] Aba de seguidores está HIDDEN, não carregando')
+    console.log('[peers-changed] Followers tab is HIDDEN, not loading')
   }
 })
 window.p2p.on('following-status-update', (list) => {
@@ -1095,6 +1152,7 @@ window.p2p.on('following-status-update', (list) => {
 ;(async () => {
   await window.coherenceSetupReady
   if (window.__coherenceSetupActive) return
+  lastRenderedLocale = window.coherenceI18n.locale
   await loadIdentity()
   await loadFollowing()
   await loadFeed()

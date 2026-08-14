@@ -102,30 +102,30 @@ async function waitUntil(check, { timeout = 15000, interval = 150 } = {}) {
   results.postRecovered = postRecovered
   results.postAfterRecovery = postAfterRecovery
 
-  console.log('A) Sem seeder: ficou em recovery?', wasWaiting)
-  console.log('A) corestore NÃO criado antes da recuperação?', results.noCorestore)
-  console.log('A) pasta temporária removida ao parar?', results.tempCleaned)
-  console.log('A) identity.json preservado?', results.identityPreserved)
-  console.log('A) marcador NÃO gravado?', results.notMarked)
-  console.log('B) Seeder sincronizou a fonte?', seeded)
-  console.log('B) Recovery concluído?', recovered)
-  console.log('B) corestore promovido só após recuperar?', results.corestorePromoted && results.tempPromoted)
-  console.log('B) marcador gravado?', results.marked)
-  console.log('B) perfil recuperado?', results.profileRecovered)
-  console.log('B) post recuperado?', results.postRecovered)
-  console.log('B) escrita pós-recuperação?', results.postAfterRecovery)
+  console.log('A) No seeder: stayed in recovery?', wasWaiting)
+  console.log('A) corestore NOT created before recovery?', results.noCorestore)
+  console.log('A) temporary folder removed on stop?', results.tempCleaned)
+  console.log('A) identity.json preserved?', results.identityPreserved)
+  console.log('A) marker NOT written?', results.notMarked)
+  console.log('B) Seeder synced the source?', seeded)
+  console.log('B) Recovery completed?', recovered)
+  console.log('B) corestore promoted only after recovery?', results.corestorePromoted && results.tempPromoted)
+  console.log('B) marker written?', results.marked)
+  console.log('B) profile recovered?', results.profileRecovered)
+  console.log('B) post recovered?', results.postRecovered)
+  console.log('B) write after recovery?', results.postAfterRecovery)
 
   const ok =
     results.noCorestore && results.tempCleaned && results.identityPreserved && results.notMarked &&
     seeded && recovered && results.corestorePromoted && results.tempPromoted && results.marked &&
     results.profileRecovered && results.postRecovered && results.postAfterRecovery
-  console.log('\nRESULTADO:', ok ? 'PASSOU' : 'FALHOU')
+  console.log('\nRESULT:', ok ? 'PASS' : 'FAIL')
 
   await restored.stop().catch(() => {})
   await seeder.stop().catch(() => {})
   await testnet.destroy()
   process.exit(ok ? 0 : 1)
 })().catch((error) => {
-  console.error('ERRO NO TESTE:', error)
+  console.error('TEST ERROR:', error)
   process.exit(1)
 })

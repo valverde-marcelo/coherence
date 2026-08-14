@@ -23,7 +23,7 @@ const forceSelect = args.includes('--select')
 const startAll = args.includes('--all')
 
 if (requestedKey && !/^[0-9a-f]{64}$/i.test(requestedKey)) {
-  console.error('❌ --user-key precisa ser uma chave pública hexadecimal de 64 caracteres.')
+  console.error('❌ --user-key must be a 64-character hexadecimal public key.')
   process.exit(1)
 }
 
@@ -31,8 +31,8 @@ async function chooseInstances(instances) {
   if (requestedKey) {
     const match = instances.find((i) => i.key === requestedKey)
     if (!match) {
-      console.error(`❌ Nenhuma instância encontrada para a chave ${requestedKey}.`)
-      console.error('   Instâncias disponíveis:')
+      console.error(`❌ No instance found for key ${requestedKey}.`)
+      console.error('   Available instances:')
       console.error(instanceList(instances))
       process.exit(1)
     }
@@ -45,7 +45,7 @@ async function chooseInstances(instances) {
     allLabel: `✨ Iniciar TODAS (${instances.length})`
   })
   if (choice.action === 'cancel') {
-    console.log('👋 Nenhuma instância foi iniciada.')
+    console.log('👋 No instance was started.')
     process.exit(0)
   }
   return choice.action === 'all' ? instances : choice.instances
@@ -55,8 +55,8 @@ async function main() {
   const instances = findInstances()
 
   if (instances.length === 0) {
-    console.log('ℹ️  Nenhuma instância encontrada em coherence-data.')
-    console.log('   Use "npm start -- --new-user" para criar uma nova conta.')
+    console.log('ℹ️  No instance found in coherence-data.')
+    console.log('   Use "npm start -- --new-user" to create a new account.')
     process.exit(0)
   }
 
