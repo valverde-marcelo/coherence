@@ -6,6 +6,10 @@
   "private": true,
   "license": "Apache-2.0",
   "author": "Marcelo Valverde",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/valverde-marcelo/coherence.git"
+  },
   "scripts": {
     "start": "node scripts/start.js",
     "start-all": "node scripts/start-all.js",
