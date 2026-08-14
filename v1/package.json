@@ -5,7 +5,7 @@
   "main": "main.js",
   "private": true,
   "scripts": {
-    "start": "electron .",
+    "start": "node scripts/start.js",
     "start-all": "node scripts/start-all.js",
     "new-user": "electron . --new-user",
     "reset": "node scripts/reset.js",

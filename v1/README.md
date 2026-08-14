@@ -62,7 +62,7 @@ To recover an account on another installation, import only the exported `identit
 
 Each identity's data is isolated in `coherence-data/<public-key>`. The app doesn't use an instance lock, so different accounts can run at the same time.
 
-When there is more than one local account, specify the public key of the account to open:
+When there is more than one local account, `npm start` shows the **same selection menu** as `start-all`, letting you choose which account to open. To skip the menu, specify the public key directly:
 
 ```bash
 npm start -- --user-key <hex-public-key>
@@ -74,7 +74,17 @@ To open **all** local accounts found in `coherence-data` at once (one window per
 npm run start-all
 ```
 
-This command detects each identity's folder in `coherence-data` and starts one Electron instance per account, with `--user-key` filled automatically. It "watches" for ~20s: if any instance crashes on startup (e.g., identity error), the reason is shown in the terminal and the full log is at `%TEMP%\coherence-start-all\<key>.log`. After that the script exits and the windows stay open.
+When there is **more than one** local account, `start-all` shows an interactive menu letting you choose which account(s) to open — including the option to start **all** of them (or cancel). The same selection can be driven non-interactively:
+
+```bash
+npm run start-all -- --all                     # start all, without asking
+npm run start-all -- --select                  # force the selection menu
+npm run start-all -- --user-key=<hex-public-key>  # start a specific account
+```
+
+`npm start` uses the same launcher logic: with multiple accounts it opens a single foreground window for the chosen account (or launches all of them in the background if you pick "TODAS"). `npm start -- --new-user` always goes straight to the new-account flow.
+
+The command detects each identity's folder in `coherence-data` and starts one Electron instance per account, with `--user-key` filled automatically. It "watches" for ~20s: if any instance crashes on startup (e.g., identity error), the reason is shown in the terminal and the full log is at `%TEMP%\coherence-start-all\<key>.log`. After that the script exits and the windows stay open.
 
 > ⚠️ Each identity uses a `corestore` with an exclusive lock: the same account cannot be open in two instances at the same time. If a window is already open for an account, running `start-all` again will make that account's new instance fail with "File descriptor could not be locked" (the log explains).
 
@@ -90,10 +100,12 @@ You can also use the dedicated script, which prevents npm from interpreting the 
 npm run new-user
 ```
 
-The in-app reset and `npm run reset` only remove the current account. With multiple accounts, the terminal reset needs to specify the key:
+The in-app reset and `npm run reset` remove the current account (asking for confirmation before deleting). With multiple accounts, `npm run reset` shows an interactive menu letting you choose which account to reset — including the option to reset **all** of them. It can also be driven non-interactively:
 
 ```bash
-npm run reset -- --user-key=<hex-public-key>
+npm run reset -- --user-key=<hex-public-key>   # reset a specific account
+npm run reset -- --select                      # force the selection menu
+npm run reset -- --yes                         # confirm automatically (no prompt)
 ```
 
 To remove all local users, use exclusively the command line:
