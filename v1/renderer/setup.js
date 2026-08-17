@@ -10,6 +10,10 @@ const setupEls = {
   error: document.getElementById('setup-error'),
   status: document.getElementById('setup-status'),
   actions: document.querySelector('.setup-actions'),
+  termsLink: document.getElementById('setup-terms-link'),
+  termsAccept: document.getElementById('setup-terms-accept'),
+  termsError: document.getElementById('setup-terms-error'),
+  confirm: document.getElementById('setup-confirm'),
   createForm: document.getElementById('setup-create-form'),
   recovery: document.getElementById('setup-recovery'),
   recoveryStatus: document.getElementById('setup-recovery-status'),
@@ -33,11 +37,96 @@ function setupStatus(message) {
   setupEls.status.hidden = false
 }
 
+/** Opens a modal (popup) with the Terms of Use in the active locale. */
+function openTermsModal() {
+  const t = (key) => window.coherenceI18n.text(key)
+  const items = window.coherenceI18n.dictionaries[window.coherenceI18n.locale].terms || []
+
+  const overlay = document.createElement('div')
+  overlay.className = 'modal-overlay'
+  overlay.setAttribute('role', 'presentation')
+
+  const dialog = document.createElement('section')
+  dialog.className = 'terms-modal'
+  dialog.setAttribute('role', 'dialog')
+  dialog.setAttribute('aria-modal', 'true')
+  dialog.setAttribute('aria-labelledby', 'terms-modal-title')
+
+  const header = document.createElement('header')
+  header.className = 'terms-modal__header'
+  const title = document.createElement('h2')
+  title.id = 'terms-modal-title'
+  title.textContent = t('termsTitle')
+  const closeBtn = document.createElement('button')
+  closeBtn.type = 'button'
+  closeBtn.className = 'btn btn--ghost btn--tiny'
+  closeBtn.textContent = t('close')
+  closeBtn.addEventListener('click', close)
+  header.appendChild(title)
+  header.appendChild(closeBtn)
+  dialog.appendChild(header)
+
+  const body = document.createElement('div')
+  body.className = 'terms-modal__body'
+  for (const item of items) {
+    const heading = document.createElement('div')
+    heading.className = 'setup-terms__h'
+    heading.textContent = item.h
+    const paragraph = document.createElement('p')
+    paragraph.className = 'setup-terms__p'
+    paragraph.textContent = item.p
+    body.appendChild(heading)
+    body.appendChild(paragraph)
+  }
+  dialog.appendChild(body)
+  overlay.appendChild(dialog)
+
+  function close() {
+    overlay.remove()
+    setupEls.termsLink.focus()
+  }
+
+  overlay.addEventListener('click', (event) => {
+    if (event.target === overlay) close()
+  })
+  overlay.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') close()
+  })
+  document.body.appendChild(overlay)
+  closeBtn.focus()
+}
+
+/**
+ * The user may only create/import an identity after confirming they read the
+ * Terms of Use. Every entry point (create button, import button, and the
+ * "confirm" submit inside the create form) is disabled until the checkbox is
+ * checked; the handlers also re-verify it as a hard guard.
+ */
+function updateTermsGate() {
+  const accepted = setupEls.termsAccept.checked
+  setupEls.importButton.disabled = !accepted
+  setupEls.createButton.disabled = !accepted
+  if (setupEls.confirm) setupEls.confirm.disabled = !accepted
+  if (accepted) setupEls.termsError.hidden = true
+}
+
+function termsBlocked() {
+  if (setupEls.termsAccept.checked) return false
+  setupEls.termsError.textContent = window.coherenceI18n.text('termsError')
+  setupEls.termsError.hidden = false
+  setupEls.termsAccept.focus()
+  return true
+}
+
 function setBusy(busy) {
   setupEls.importButton.disabled = busy
   setupEls.createButton.disabled = busy
   setupEls.locale.disabled = busy
   setupEls.username.disabled = busy
+  if (setupEls.confirm) setupEls.confirm.disabled = busy
+  // When the busy state ends, re-apply the terms gate so the actions stay
+  // locked unless the Terms of Use were accepted.
+  if (!busy) updateTermsGate()
 }
 
 function buildStalledMessage(info) {
@@ -127,6 +216,10 @@ async function bootSetup() {
   const settings = await window.p2p.setup.getSettings()
   setupEls.locale.value = settings.locale || 'pt-BR'
   window.coherenceI18n.apply(setupEls.locale.value)
+  // If the Terms of Use were accepted in a previous visit (and the user came
+  // back to this screen), keep the checkbox checked.
+  setupEls.termsAccept.checked = !!settings.termsAccepted
+  updateTermsGate()
 
   const hasIdentity = await window.p2p.setup.checkIdentity()
   if (hasIdentity) {
@@ -196,12 +289,20 @@ setupEls.locale.addEventListener('change', async () => {
   window.coherenceI18n.apply(settings.locale)
 })
 
+setupEls.termsAccept.addEventListener('change', updateTermsGate)
+
+setupEls.termsLink.addEventListener('click', (event) => {
+  event.preventDefault()
+  openTermsModal()
+})
+
 setupEls.createButton.addEventListener('click', () => {
   setupEls.createForm.hidden = false
   setupEls.username.focus()
 })
 
 setupEls.importButton.addEventListener('click', async () => {
+  if (termsBlocked()) return
   setupEls.error.hidden = true
   setBusy(true)
   setupStatus(window.coherenceI18n.text('imported'))
@@ -211,6 +312,9 @@ setupEls.importButton.addEventListener('click', async () => {
       setupEls.status.hidden = true
       return
     }
+    try {
+      await window.p2p.setup.setSettings({ termsAccepted: true })
+    } catch { /* best effort — acceptance is already enforced by the UI gate */ }
     window.location.reload()
   } catch (error) {
     setupError(window.coherenceI18n.text('importError'))
@@ -222,6 +326,7 @@ setupEls.importButton.addEventListener('click', async () => {
 setupEls.createForm.addEventListener('submit', async (event) => {
   event.preventDefault()
   setupEls.error.hidden = true
+  if (termsBlocked()) return
   const username = setupEls.username.value.trim()
   if (!/^[\p{L}\p{N} _.-]{1,30}$/u.test(username)) {
     setupError(window.coherenceI18n.text('invalidName'))
@@ -231,6 +336,9 @@ setupEls.createForm.addEventListener('submit', async (event) => {
   setupStatus(window.coherenceI18n.text('creating'))
   try {
     await window.p2p.setup.createIdentity(username)
+    try {
+      await window.p2p.setup.setSettings({ termsAccepted: true })
+    } catch { /* best effort */ }
     window.location.reload()
   } catch (error) {
     setupError(window.coherenceI18n.text('createError'))

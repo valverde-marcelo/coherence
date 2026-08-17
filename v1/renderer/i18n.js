@@ -10,6 +10,10 @@ window.coherenceI18n = {
       createAccount: 'criar nova conta',
       username: 'nome de usuário',
       confirm: 'confirmar',
+      termsAcceptBefore: 'Li e aceito os',
+      termsAcceptLink: 'Termos de Uso',
+      termsTitle: 'Termos de Uso',
+      termsError: 'Para continuar, leia e aceite os Termos de Uso.',
       imported: 'Identidade importada. Iniciando seu espaço…',
       searchingSeeders: 'Buscando seeders na rede para recuperar seus dados…',
       seederFound: 'Seeder encontrado! Baixando seus dados…',
@@ -53,12 +57,26 @@ window.coherenceI18n = {
       viewProfile: 'ver perfil', followingDone: '✓ seguindo',
       noFollowersYet: 'nenhum seguidor ainda',
       composerErrorEmpty: 'escreva algo ou anexe uma imagem antes de publicar.',
+      publishWarningTitle: 'Conteúdo permanente',
+      publishWarningMessage: 'Ao publicar, seu conteúdo é assinado e replicado entre os peers da rede. Uma vez distribuído, ele se torna permanente: ninguém — nem mesmo você — poderá removê-lo ou editá-lo, e cópias podem continuar existindo com outros peers mesmo que você exclua o aplicativo ou sua conta.',
+      publishWarningDontShow: 'Não mostrar este aviso novamente',
+      publishWarningConfirm: 'Entendi, publicar',
       searching: 'buscando…', noResults: 'Nenhum resultado encontrado', searchError: 'erro na busca',
       followingRelation: 'seguindo/seguidor', viaNetwork: 'via rede', viaUser: 'via {name}',
       suggestedUsersTitle: 'usuários sugeridos', suggested: 'sugerido',
       addLinkTitle: 'adicionar link', title: 'título', linkTitlePlaceholder: 'ex: Meu Site',
       url: 'URL', urlPlaceholder: 'https://exemplo.com', add: 'adicionar',
       fillTitleUrl: 'Preencha título e URL', maxLinksReached: 'Máximo de 3 links atingido', link: 'Link',
+      terms: [
+        ['1. Sobre o serviço', 'O Coherence é uma rede social descentralizada. Seus dados são armazenados localmente no seu dispositivo e replicados entre peers em uma rede ponto a ponto (P2P). Não existe servidor central nem empresa armazenando seu conteúdo. Ao criar uma conta, você confirma que leu e aceitou estes Termos de Uso.'],
+        ['2. Suas chaves são sua conta', 'Você é o único responsável por manter suas chaves privadas (identity.json) seguras e com backup. Qualquer pessoa que obtiver suas chaves poderá acessar sua conta, publicar em seu nome e exportar seus dados. Não é possível recuperar chaves perdidas.'],
+        ['3. O conteúdo é permanente', 'As postagens, o perfil e as imagens que você publicar são assinados criptograficamente e replicados entre os peers da rede. Uma vez replicado, o conteúdo se torna permanente: na prática, não pode ser removido ou editado por ninguém — inclusive por você. Excluir o aplicativo, apagar seus dados locais ou remover sua conta não remove as cópias que já foram distribuídas para outros peers. Não publique nada que possa precisar retirar ou apagar depois. Você é integralmente responsável pelo conteúdo que publicar.'],
+        ['4. Conteúdo público', 'Tudo o que você publicar fica visível para qualquer peer da rede que possua sua chave pública. Não publique informações privadas, confidenciais ou sensíveis.'],
+        ['5. Conteúdo proibido', 'Você concorda em não usar a rede para distribuir conteúdo ilegal, malware, assédio, discurso de ódio ou conteúdo que viole a legislação aplicável ou os direitos de terceiros. Você deve ter os direitos necessários sobre tudo o que publicar.'],
+        ['6. Sem garantias', 'O software é fornecido "no estado em que se encontra", sem garantias de qualquer tipo, expressas ou implícitas. A rede depende de voluntários e de outros peers estarem online; disponibilidade, integridade e durabilidade dos dados não são garantidas.'],
+        ['7. Limitação de responsabilidade', 'Na máxima extensão permitida por lei, os colaboradores do projeto não são responsáveis por quaisquer danos decorrentes do uso do software ou da rede, incluindo a distribuição permanente de conteúdo publicado por você e a perda de dados ou chaves.'],
+        ['8. Alterações destes termos', 'Estes termos podem ser atualizados periodicamente. O uso contínuo do aplicativo após a publicação de alterações implica a aceitação dos termos atualizados.']
+      ].map(([h, p]) => ({ h, p })),
       faqItems: [
         ['O que é o Coherence?', 'É uma rede social descentralizada onde cada usuário é dono dos seus dados, armazenados localmente e replicados entre pares.'],
         ['Como meus dados são protegidos?', 'Todos os dados são assinados com sua chave privada. Ninguém pode alterar seus posts ou perfil sem ter sua chave.'],
@@ -80,6 +98,10 @@ window.coherenceI18n = {
       createAccount: 'create new account',
       username: 'username',
       confirm: 'confirm',
+      termsAcceptBefore: 'I have read and accept the',
+      termsAcceptLink: 'Terms of Use',
+      termsTitle: 'Terms of Use',
+      termsError: 'To continue, please read and accept the Terms of Use.',
       imported: 'Identity imported. Starting your space…',
       searchingSeeders: 'Looking for seeders on the network to recover your data…',
       seederFound: 'Seeder found! Downloading your data…',
@@ -123,12 +145,26 @@ window.coherenceI18n = {
       viewProfile: 'view profile', followingDone: '✓ following',
       noFollowersYet: 'no followers yet',
       composerErrorEmpty: 'write something or attach an image before publishing.',
+      publishWarningTitle: 'Permanent content',
+      publishWarningMessage: 'When you publish, your content is signed and replicated among peers on the network. Once distributed, it becomes permanent: no one — not even you — will be able to remove or edit it, and copies may continue to exist with other peers even if you delete the application or your account.',
+      publishWarningDontShow: 'Do not show this warning again',
+      publishWarningConfirm: 'I understand, publish',
       searching: 'searching…', noResults: 'No results found', searchError: 'search error',
       followingRelation: 'following/follower', viaNetwork: 'via network', viaUser: 'via {name}',
       suggestedUsersTitle: 'suggested users', suggested: 'suggested',
       addLinkTitle: 'add link', title: 'title', linkTitlePlaceholder: 'e.g. My Site',
       url: 'URL', urlPlaceholder: 'https://example.com', add: 'add',
       fillTitleUrl: 'Fill in title and URL', maxLinksReached: 'Maximum of 3 links reached', link: 'Link',
+      terms: [
+        ['1. About the service', 'Coherence is a decentralized social network. Your data is stored locally on your device and replicated among peers over a peer-to-peer (P2P) network. There is no central server and no company storing your content. By creating an account, you confirm that you have read and accepted these Terms of Use.'],
+        ['2. Your keys are your account', 'You are solely responsible for keeping your private keys (identity.json) secure and backed up. Anyone who obtains your keys can access your account, post on your behalf, and export your data. Lost keys cannot be recovered.'],
+        ['3. Content is permanent', 'The posts, profile, and images you publish are cryptographically signed and replicated among peers on the network. Once replicated, content becomes permanent: in practice, it cannot be removed or edited by anyone — including you. Deleting the application, erasing your local data, or removing your account does not remove copies that have already been distributed to other peers. Do not publish anything you may later need to retract or delete. You are fully responsible for the content you publish.'],
+        ['4. Public content', 'Everything you publish is visible to any peer on the network that holds your public key. Do not publish private, confidential, or sensitive information.'],
+        ['5. Prohibited content', 'You agree not to use the network to distribute illegal content, malware, harassment, hate speech, or content that violates applicable law or the rights of third parties. You must have the necessary rights to everything you publish.'],
+        ['6. No warranty', 'The software is provided "as is", without warranty of any kind, express or implied. The network depends on volunteers and on other peers being online; availability, integrity, and durability of data are not guaranteed.'],
+        ['7. Limitation of liability', 'To the maximum extent permitted by law, the project\'s contributors are not liable for any damages arising from the use of the software or the network, including the permanent distribution of content you publish and the loss of data or keys.'],
+        ['8. Changes to these terms', 'These terms may be updated from time to time. Continued use of the application after changes are published constitutes acceptance of the updated terms.']
+      ].map(([h, p]) => ({ h, p })),
       faqItems: [
         ['What is Coherence?', 'It is a decentralized social network where each user owns their data, stored locally and replicated between peers.'],
         ['How is my data protected?', 'All data is signed with your private key. Nobody can alter your posts or profile without your key.'],
@@ -158,6 +194,9 @@ window.coherenceI18n = {
     })
     document.querySelectorAll('[data-i18n-title]').forEach((element) => {
       element.title = this.text(element.dataset.i18nTitle)
+    })
+    document.querySelectorAll('[data-i18n-aria-label]').forEach((element) => {
+      element.setAttribute('aria-label', this.text(element.dataset.i18nAriaLabel))
     })
     if (typeof this.onApply === 'function') this.onApply(this.locale)
   }

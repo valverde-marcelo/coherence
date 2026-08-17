@@ -22,10 +22,17 @@
         </select>
       </label>
 
+      <label class="setup-terms-accept">
+        <input type="checkbox" id="setup-terms-accept" />
+        <span data-i18n="termsAcceptBefore">Li e aceito os</span>
+        <a href="#" id="setup-terms-link" class="setup-terms-link" data-i18n="termsAcceptLink">Termos de Uso</a>
+      </label>
+
       <div class="setup-actions">
         <button id="setup-import" type="button" class="btn btn--ghost" data-i18n="importIdentity">importar chaves</button>
         <button id="setup-create" type="button" class="btn btn--accent" data-i18n="createAccount">criar nova conta</button>
       </div>
+      <p id="setup-terms-error" class="form-error setup-terms-error" hidden></p>
 
       <div id="setup-recovery" class="setup-recovery" hidden>
         <div id="setup-recovery-anim" class="recovery-anim" aria-hidden="true">
@@ -50,7 +57,7 @@
           <span data-i18n="username">nome de usuário</span>
           <input id="setup-username" type="text" maxlength="30" autocomplete="off" required />
         </label>
-        <button type="submit" class="btn btn--accent" data-i18n="confirm">confirmar</button>
+        <button id="setup-confirm" type="submit" class="btn btn--accent" data-i18n="confirm">confirmar</button>
       </form>
       <p id="setup-error" class="form-error" hidden></p>
       <p id="setup-status" class="setup-status" hidden></p>

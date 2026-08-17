@@ -912,6 +912,75 @@ els.composerImage.addEventListener('change', async () => {
 })
 
 // Composer Submit
+// One-time permanence warning before publishing. The warning is shown until the
+// user marks "don't show again" (persisted in settings.json). Resolves true if
+// the user may proceed (confirmed, or warning already dismissed).
+function confirmPublishPermanence() {
+  return new Promise((resolve) => {
+    ;(async () => {
+      let dismissed = false
+      try {
+        const settings = await window.p2p.setup.getSettings()
+        dismissed = !!settings.publishWarningDismissed
+      } catch {
+        dismissed = false
+      }
+      if (dismissed) {
+        resolve(true)
+        return
+      }
+
+      const overlay = document.createElement('div')
+      overlay.className = 'modal-overlay'
+      overlay.setAttribute('role', 'presentation')
+
+      const dialog = document.createElement('section')
+      dialog.className = 'confirm-dialog publish-warning'
+      dialog.setAttribute('role', 'alertdialog')
+      dialog.setAttribute('aria-modal', 'true')
+      dialog.setAttribute('aria-labelledby', 'publish-warning-title')
+      dialog.innerHTML = `
+        <h2 id="publish-warning-title"></h2>
+        <p class="confirm-dialog-message publish-warning-message"></p>
+        <label class="publish-warning-remember">
+          <input type="checkbox" id="publish-warning-dont-show" />
+          <span></span>
+        </label>
+        <div class="modal-actions">
+          <button type="button" class="btn btn--ghost publish-warning-cancel"></button>
+          <button type="button" class="btn btn--danger publish-warning-submit"></button>
+        </div>
+      `
+      dialog.querySelector('h2').textContent = t('publishWarningTitle')
+      dialog.querySelector('.publish-warning-message').textContent = t('publishWarningMessage')
+      dialog.querySelector('.publish-warning-remember span').textContent = t('publishWarningDontShow')
+      dialog.querySelector('.publish-warning-cancel').textContent = t('cancel')
+      dialog.querySelector('.publish-warning-submit').textContent = t('publishWarningConfirm')
+
+      const finish = (ok) => {
+        overlay.remove()
+        resolve(ok)
+      }
+      dialog.querySelector('.publish-warning-cancel').addEventListener('click', () => finish(false))
+      dialog.querySelector('.publish-warning-submit').addEventListener('click', async () => {
+        const dontShow = dialog.querySelector('#publish-warning-dont-show').checked
+        if (dontShow) {
+          try {
+            await window.p2p.setup.setSettings({ publishWarningDismissed: true })
+          } catch { /* best effort */ }
+        }
+        finish(true)
+      })
+      overlay.addEventListener('click', (event) => {
+        if (event.target === overlay) finish(false)
+      })
+      overlay.appendChild(dialog)
+      document.body.appendChild(overlay)
+      dialog.querySelector('#publish-warning-dont-show').focus()
+    })()
+  })
+}
+
 els.composerForm.addEventListener('submit', async (evt) => {
   evt.preventDefault()
   clearError(els.composerError)
@@ -921,6 +990,10 @@ els.composerForm.addEventListener('submit', async (evt) => {
     showError(els.composerError, t('composerErrorEmpty'))
     return
   }
+
+  // Permanence alert before anything is broadcast to the network.
+  const proceed = await confirmPublishPermanence()
+  if (!proceed) return
 
   try {
     if (pendingImage) {
