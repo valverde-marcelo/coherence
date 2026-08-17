@@ -29,3 +29,15 @@
 - When User B's app tries to render a post from User A, B's client sends a `get(index)` request via the P2P stream to fetch that specific block.
 - User A's app intercepts this event on their own Hypercore's replication stream.
 - Since the block request is associated with the connected peer, the author's node knows exactly the moment the follower downloaded the post block, acting as an instant read/receipt confirmation at the protocol level.
+
+## 4. Official account as a search hub
+
+Every brand-new user automatically follows the hardcoded official "Coherence" account
+(`OFFICIAL_COHERENCE_KEY` in `v1/src/coherence-official.js`). Since all users share this
+single follower edge, the official becomes a **common hub of degree 1**: the transitive
+search (`searchUsers`) can reach any user from any other by traversing the official's
+follower records, drastically reducing the hops needed to discover new people.
+
+> ⚠️ The hub only works while the official's core is reachable (the official online or
+> being seeded by followers). Without it, new users still follow the official but see
+> "syncing" until it is available, and discovery falls back to the ordinary graph paths.

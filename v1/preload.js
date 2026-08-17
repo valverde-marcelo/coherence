@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('p2p', {
   getUserSocial: (key) => ipcRenderer.invoke('p2p:get-user-social', key),
   getPostsOf: (key) => ipcRenderer.invoke('p2p:get-posts-of', key),
   searchUsers: (query, opts) => ipcRenderer.invoke('p2p:search-users', query, opts),
+  getSuggestedUsers: () => ipcRenderer.invoke('p2p:get-suggested-users'),
 
   setup: {
     getSettings: () => ipcRenderer.invoke('setup:get-settings'),

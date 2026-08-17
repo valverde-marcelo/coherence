@@ -623,6 +623,11 @@ button, input, textarea {
   color: var(--muted);
 }
 
+.suggested-users-section {
+  font-size: 12px;
+  color: var(--muted);
+}
+
 /* Profile View */
 .profile-view-container,
 .search-view-container {

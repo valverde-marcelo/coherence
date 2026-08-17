@@ -92,12 +92,16 @@ class P2PNode extends EventEmitter {
    * @param {object} opts
    * @param {string} opts.dataDir - folder where identity.json and the Corestore storage live
    * @param {number} [opts.readTimeoutMs] - timeout when reading data from followed peers
+   * @param {string} [opts.autoFollowKey] - public key of the official Coherence user that
+   *   BRAND-NEW users follow automatically on first run (ignored for existing users).
+   *   Pass ''/undefined to disable.
    */
-  constructor({ dataDir, readTimeoutMs = 4000, recoveryTimeoutMs = 90000, recoveryDownloadTimeoutMs = 15000, swarmOpts = {} }) {
+  constructor({ dataDir, readTimeoutMs = 4000, recoveryTimeoutMs = 90000, recoveryDownloadTimeoutMs = 15000, swarmOpts = {}, autoFollowKey = '' }) {
     super()
     this.dataDir = dataDir
     this.readTimeoutMs = readTimeoutMs
     this.recoveryTimeoutMs = recoveryTimeoutMs
+    this.autoFollowKey = String(autoFollowKey || '').trim().toLowerCase()
     // Window to wait for blocks in each recovery download attempt.
     // Smaller in tests to detect stalls faster; 15s in the app.
     this.recoveryDownloadTimeoutMs = recoveryDownloadTimeoutMs
@@ -216,6 +220,21 @@ class P2PNode extends EventEmitter {
         followList: [],
         updatedAt: Date.now()
       })
+
+      // Brand-new user: automatically follow the official Coherence account
+      // (when configured). The follow is scheduled on the 'ready' event — which
+      // start() only emits at the very end — so follow() never hits the
+      // "not ready" guard (a plain setImmediate here would race with the
+      // remaining awaits of start()). follow() still adds the official to the
+      // follow list even when it is offline (best-effort download), and the user
+      // can unfollow it later like any other user. Existing users are never
+      // re-followed on restart: this branch only runs when there is no profile
+      // yet, so someone who unfollowed the official is left alone.
+      if (this.autoFollowKey && HEX64.test(this.autoFollowKey) && this.autoFollowKey !== this.myPublicKeyHex) {
+        this.once('ready', () => {
+          this.follow(this.autoFollowKey).catch((err) => this.emit('error', err))
+        })
+      }
     } else if (!existingProfile.value.links) {
       // Migration for existing users: add the links field if it doesn't exist
       existingProfile.value.links = []

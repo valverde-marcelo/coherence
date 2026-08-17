@@ -28,6 +28,12 @@ A distributed social network built on P2P (peer-to-peer) technology using **Hype
 - ✅ **Transitive user search**: `searchUsers()` traverses the follow graph in both
   directions (who you follow/followers and, for each profile, its follows and followers),
   loading profiles on demand up to 3 hops
+- ✅ **Official account auto-follow**: brand-new users automatically follow the hardcoded
+  official "Coherence" account (`OFFICIAL_COHERENCE_KEY` in `v1/src/coherence-official.js`),
+  which becomes a common hub for everyone — this makes the transitive search reach any user
+  through the official's followers. Users can unfollow it later like any other account.
+- ✅ **Suggested users on search**: a hardcoded list (`SUGGESTED_USERS` in the same module)
+  is always shown at the top of the search screen — ideal for sponsors/featured accounts.
 - ✅ **Intuitive Interface**: 3 columns (Profile, Feed, Followers) in Electron
 - ✅ **Persistence**: Data saved locally in `~/Documents/coherence-data/`
 
@@ -152,6 +158,29 @@ the reason is shown in the terminal and the full log is at
 2. Everyone who connected to your node will appear
 3. Click a name to view the full profile
 
+## 🎯 Official account & suggested users
+
+The app ships with two hardcoded, app-level concepts (both in
+`v1/src/coherence-official.js`, with no Electron dependency):
+
+- **Official account (`OFFICIAL_COHERENCE_KEY`)**: every BRAND-NEW user automatically
+  follows this account on first run (non-blocking — the follow is scheduled in the
+  background). Because everyone follows it, it becomes a common "hub": combined with
+  the transitive search, any user can find any other through the official's follower
+  records, even across many hops. Users can unfollow it whenever they want, and
+  existing users or users who already unfollowed are never re-followed.
+  - While `OFFICIAL_COHERENCE_KEY` is empty (`''`), the feature is disabled and the
+    app behaves exactly as before.
+  - To enable it: create the official account with the app, copy its public key and
+    paste it into the constant. Keep the official online (or seeded) so followers can
+    sync its profile/posts — otherwise new users will show "syncing" until it is
+    reachable.
+- **Suggested users (`SUGGESTED_USERS`)**: a fixed list shown at the top of the search
+  screen (always visible, even without a query), with "view profile" and "follow"
+  buttons — ideal for sponsors/featured accounts. Entries are
+  `{ key, nome, bio?, label? }`; the list ships with the app, so updating it requires
+  a new release.
+
 ## 🔄 Data Synchronization
 
 Data is replicated through:
@@ -180,6 +209,8 @@ This runs real integration tests (`test/`) against an **isolated local DHT**
 - `test-identity-recovery.js` — recovery of profile, posts and followers using only `identity.json`.
 - `test-recovery-timeout.js` — timeout without a seeder and fallback to a new core.
 - `test-import-cancel-no-corestore.js` — importing without a seeder and canceling doesn't create `corestore`; recovering with a seeder promotes the storage and writes the recovery marker.
+- `test-auto-follow-official.js` — new users auto-follow the official account; restart doesn't duplicate it and unfollow is not reversed by a later restart.
+- `test-suggested-users.js` — validates the format of `OFFICIAL_COHERENCE_KEY` and `SUGGESTED_USERS`.
 
 ## 🔐 Privacy & Security
 

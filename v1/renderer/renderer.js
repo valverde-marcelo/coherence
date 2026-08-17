@@ -32,6 +32,7 @@ const els = {
   searchInput: document.getElementById('search-input'),
   searchBtn: document.getElementById('search-btn'),
   searchResults: document.getElementById('search-results'),
+  suggestedUsersSection: document.getElementById('suggested-users-section'),
   backToFeedFromSearchBtn: document.getElementById('back-to-feed-from-search-btn'),
   openSearchBtn: document.getElementById('open-search-btn'),
 
@@ -621,8 +622,11 @@ function refreshMainUI() {
   if (currentProfile) renderIdentity(currentProfile)
   loadFollowing()
   if (!els.tabContentFollowers.hidden) loadFollowers()
-  if (!els.searchViewContainer.hidden && els.searchInput.value.trim()) {
-    els.searchBtn.click()
+  if (!els.searchViewContainer.hidden) {
+    renderSuggestedUsers()
+    if (els.searchInput.value.trim()) {
+      els.searchBtn.click()
+    }
   } else if (!els.profileViewContainer.hidden && currentViewingProfileKey) {
     showProfileView(currentViewingProfileKey)
   } else if (!els.feed.hidden) {
@@ -958,9 +962,113 @@ els.backToFeedFromSearchBtn.addEventListener('click', () => {
   els.searchResults.innerHTML = ''
 })
 
+// Hardcoded suggested users (sponsors/featured accounts) always shown at the
+// TOP of the search screen — even before typing a query. Rendered with the
+// same visual pattern as search results so the two sections look consistent.
+async function renderSuggestedUsers() {
+  let suggested = []
+  try {
+    suggested = await window.p2p.getSuggestedUsers() || []
+  } catch (err) {
+    suggested = []
+  }
+  const section = els.suggestedUsersSection
+  section.innerHTML = ''
+  if (!Array.isArray(suggested) || suggested.length === 0) {
+    section.hidden = true
+    return
+  }
+
+  const header = document.createElement('div')
+  header.className = 'eyebrow'
+  header.style.margin = '16px 0 4px'
+  header.textContent = t('suggestedUsersTitle')
+  section.appendChild(header)
+
+  const list = document.createElement('div')
+  list.style.fontSize = '12px'
+  let renderedAny = false
+
+  for (const entry of suggested) {
+    if (!entry || typeof entry.key !== 'string') continue
+    const isMe = entry.key === myKey
+    const alreadyFollowing = currentFollowingList.some((p) => p.publicKeyHex === entry.key)
+    const item = document.createElement('div')
+    item.style.padding = '8px 0'
+    item.style.borderBottom = '1px solid var(--line)'
+    item.style.cursor = 'pointer'
+
+    const nameEl = document.createElement('div')
+    nameEl.style.color = 'var(--relay)'
+    nameEl.textContent = entry.nome || shortKey(entry.key)
+    item.appendChild(nameEl)
+
+    if (entry.bio) {
+      const bioEl = document.createElement('div')
+      bioEl.style.fontSize = '11px'
+      bioEl.style.color = 'var(--muted)'
+      bioEl.textContent = entry.bio
+      item.appendChild(bioEl)
+    }
+
+    const metaEl = document.createElement('div')
+    metaEl.style.fontSize = '11px'
+    metaEl.style.color = 'var(--muted)'
+    const metaParts = []
+    if (entry.label) metaParts.push(entry.label)
+    metaParts.push(t('suggested'))
+    metaParts.push(shortKey(entry.key))
+    metaEl.textContent = metaParts.filter(Boolean).join(' · ')
+    item.appendChild(metaEl)
+
+    const actionsEl = document.createElement('div')
+    actionsEl.style.marginTop = '4px'
+    if (!isMe) {
+      const viewBtn = document.createElement('button')
+      viewBtn.type = 'button'
+      viewBtn.className = 'btn btn--ghost btn--small'
+      viewBtn.textContent = t('viewProfile')
+      viewBtn.addEventListener('click', (evt) => {
+        evt.stopPropagation()
+        showProfileView(entry.key)
+      })
+      actionsEl.appendChild(viewBtn)
+
+      if (!alreadyFollowing) {
+        const followBtn = document.createElement('button')
+        followBtn.type = 'button'
+        followBtn.className = 'btn btn--accent btn--small'
+        followBtn.textContent = t('follow')
+        followBtn.addEventListener('click', async (evt) => {
+          evt.stopPropagation()
+          try {
+            await window.p2p.follow(entry.key)
+            followBtn.textContent = t('followingDone')
+            followBtn.disabled = true
+            await loadFollowing()
+            await loadFeed()
+            renderSuggestedUsers()
+          } catch (err) {
+            console.error('Error following suggested user:', err)
+          }
+        })
+        actionsEl.appendChild(followBtn)
+      }
+    }
+    item.appendChild(actionsEl)
+    item.addEventListener('click', () => showProfileView(entry.key))
+    list.appendChild(item)
+    renderedAny = true
+  }
+
+  section.appendChild(list)
+  section.hidden = !renderedAny
+}
+
 // Search Button — TRANSITIVE search over the follow graph (friends of friends)
 els.searchBtn.addEventListener('click', async () => {
   const query = els.searchInput.value.trim()
+  renderSuggestedUsers()
   if (!query) return
 
   els.searchResults.innerHTML = `<p style="font-size: 12px; color: var(--muted);">${t('searching')}</p>`
@@ -1070,6 +1178,7 @@ els.openSearchBtn.addEventListener('click', () => {
   els.feed.hidden = true
   els.profileViewContainer.hidden = true
   els.searchViewContainer.hidden = false
+  renderSuggestedUsers()
   els.searchInput.focus()
 })
 
@@ -1129,7 +1238,11 @@ function startProfilePolling() {
 
 window.p2p.on('feed-updated', loadFeed)
 window.p2p.on('profile-updated', loadIdentity)
-window.p2p.on('following-changed', () => { loadFollowing(); loadFeed() })
+window.p2p.on('following-changed', () => {
+  loadFollowing()
+  loadFeed()
+  if (!els.searchViewContainer.hidden) renderSuggestedUsers()
+})
 window.p2p.on('peers-changed', () => {
   console.log('[peers-changed] event fired')
   refreshStatus()
@@ -1143,6 +1256,7 @@ window.p2p.on('peers-changed', () => {
 })
 window.p2p.on('following-status-update', (list) => {
   renderFollowing(list)
+  if (!els.searchViewContainer.hidden) renderSuggestedUsers()
 })
 
 // =====================================================================

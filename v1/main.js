@@ -15,6 +15,10 @@ const {
   migrateLegacyData,
   isEstablished
 } = require('./src/user-data')
+const {
+  OFFICIAL_COHERENCE_KEY,
+  SUGGESTED_USERS
+} = require('./src/coherence-official')
 
 let mainWindow = null
 let node = null
@@ -269,7 +273,7 @@ async function startNode({ recovery = false } = {}) {
   const operation = nodeLifecycle.then(async () => {
     if (node) return node.myPublicKeyHex
 
-    const startedNode = new P2PNode({ dataDir })
+    const startedNode = new P2PNode({ dataDir, autoFollowKey: OFFICIAL_COHERENCE_KEY })
     node = startedNode
     shuttingDown = false
     console.log('Starting P2P node with storage at', startedNode.dataDir)
@@ -414,6 +418,8 @@ function registerIpcHandlers() {
   ipcMain.handle('p2p:get-followers', () => node ? node.getFollowers() : [])
   ipcMain.handle('p2p:get-user-social', (_evt, key) => node ? node.getUserSocial(key) : null)
   ipcMain.handle('p2p:search-users', (_evt, query, opts) => node ? node.searchUsers(query, opts) : [])
+  // Hardcoded suggested users (sponsors/featured) shown at the top of the search screen.
+  ipcMain.handle('p2p:get-suggested-users', () => SUGGESTED_USERS)
   ipcMain.handle('p2p:get-posts-of', (_evt, key) => node ? node.getPostsOf(key) : null)
   ipcMain.handle('setup:get-settings', () => readSettings())
   ipcMain.handle('setup:set-settings', (_evt, settings) => writeSettings(settings))
