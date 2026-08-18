@@ -22,6 +22,18 @@
         </select>
       </label>
 
+      <!-- Account selector: always shown on the welcome screen (even with a
+           single account), so the user can open any existing account, import
+           keys or create a new one — without a separate picker window. -->
+      <div id="setup-account-section" class="setup-account-section" hidden>
+        <label class="field">
+          <span data-i18n="selectAccount">conta</span>
+          <select id="setup-account" class="setup-select"></select>
+        </label>
+        <p id="setup-no-accounts" class="setup-account-hint" data-i18n="noAccounts" hidden>nenhuma conta local ainda. crie uma nova ou importe suas chaves.</p>
+        <button id="setup-open" type="button" class="btn btn--accent setup-open-btn" data-i18n="openAccount">abrir conta</button>
+      </div>
+
       <label class="setup-terms-accept">
         <input type="checkbox" id="setup-terms-accept" />
         <span data-i18n="termsAcceptBefore">Li e aceito os</span>
@@ -137,23 +149,24 @@
         <div id="search-results" class="search-results"></div>
       </div>
 
-      <!-- Update banner (shown when a newer release is available) -->
-      <div id="update-banner" class="update-banner" hidden>
-        <span id="update-banner-text"></span>
-        <a href="#" id="update-banner-link" class="update-banner-link"></a>
-        <button id="update-banner-close" type="button" class="update-banner-close" aria-label="close">×</button>
-      </div>
-
       <!-- Composer Form (only show when viewing feed) -->
       <form class="composer" id="composer-form">
         <textarea id="composer-text" placeholder="transmitir algo para a rede…" rows="3" data-i18n-placeholder="composerPlaceholder"></textarea>
         <div class="composer-row">
-          <label class="composer-image-label">
-            <input type="file" id="composer-image" accept="image/*" hidden />
-            <span id="composer-image-name" data-i18n="addImage">+ imagem</span>
-          </label>
-          <button type="submit" class="btn btn--accent" data-i18n="publish">publicar</button>
+          <div class="composer-tools">
+            <button type="button" id="composer-emoji-btn" class="composer-tool-btn" title="emojis" data-i18n-title="emoji">😊</button>
+            <label class="composer-image-label">
+              <input type="file" id="composer-image" accept="image/*" hidden />
+              <span id="composer-image-name" data-i18n="addImage">+ imagem</span>
+            </label>
+            <div id="composer-emoji-panel" class="emoji-panel" hidden></div>
+          </div>
+          <div class="composer-counter-wrap">
+            <span id="composer-counter" class="composer-counter">0/1000</span>
+            <button type="submit" id="composer-publish-btn" class="btn btn--accent" data-i18n="publish">publicar</button>
+          </div>
         </div>
+        <p class="composer-hint" data-i18n="formattingHint">*negrito* · _itálico_ · ~tachado~ · &gt; citação</p>
         <p class="form-error" id="composer-error" hidden></p>
       </form>
 
@@ -198,6 +211,13 @@
 
   </div>
 
+  <!-- Update footer bar (overlaid at the bottom when a newer release is available) -->
+  <div id="update-banner" class="update-banner" hidden role="status">
+    <span id="update-banner-text"></span>
+    <a href="#" id="update-banner-link" class="update-banner-link"></a>
+    <button id="update-banner-close" type="button" class="update-banner-close" aria-label="close">×</button>
+  </div>
+
   <div id="settings-modal" class="modal-overlay" hidden>
     <section class="settings-modal" role="dialog" aria-modal="true" aria-labelledby="settings-title">
       <header class="settings-header">
@@ -235,6 +255,9 @@
       <header class="post-header">
         <span class="post-author"></span>
         <span class="post-time"></span>
+        <button type="button" class="post-share-btn">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+        </button>
       </header>
       <div class="post-body"></div>
       <img class="post-image" hidden />
@@ -268,6 +291,7 @@
   </template>
 
   <script src="i18n.js"></script>
+  <script src="emojis.js"></script>
   <script src="setup.js"></script>
   <script src="ConfirmDialog.js"></script>
   <script src="AboutTab.js"></script>

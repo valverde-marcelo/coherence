@@ -69,7 +69,8 @@ git push origin v1.0.2
 ```
 
 Pronto: a release aparece no GitHub com os executáveis, e os usuários recebem o
-aviso de atualização no app (banner no startup / botão em Configurações).
+aviso de atualização no app (barra discreta no rodapé a cada abertura / botão em
+Configurações).
 
 ---
 

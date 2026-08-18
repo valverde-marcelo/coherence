@@ -9,7 +9,8 @@ const {
   publicKeyHexFromIdentity,
   readIdentity,
   userDataDir,
-  listUserKeys,
+  listUserAccounts,
+  writeAccountName,
   parseUserKeyArg,
   identityMatchesKey,
   migrateLegacyData,
@@ -19,15 +20,34 @@ const {
   OFFICIAL_COHERENCE_KEY,
   SUGGESTED_USERS
 } = require('./src/coherence-official')
+const {
+  extractCoherenceUrl,
+  parseCoherenceUrl,
+  startDeepLinkServer,
+  registerInstance,
+  findActiveInstance,
+  sendDeepLinkTo
+} = require('./src/deep-link')
 
 let mainWindow = null
 let node = null
 let dataRoot = null
 let dataDir = null
+// True while the app is on the welcome screen (no account chosen yet). In
+// this mode dataDir === dataRoot and the account selector is shown.
+let welcomeMode = false
 let statusUpdateInterval = null
 let nodeLifecycle = Promise.resolve()
 let quitting = false
 let shuttingDown = false
+// A coherence:// target waiting to be applied by the renderer.
+let pendingDeepLink = null
+// Loopback server that receives coherence:// URLs routed to this instance.
+let deepLinkServer = null
+// Removes this instance from the machine-wide deep-link registry.
+let deepLinkUnregister = null
+// True once the renderer subscribed to the 'deeplink' event.
+let rendererDeepLinkReady = false
 
 // =====================================================================
 // Protection against "EPIPE: broken pipe" when logging
@@ -174,95 +194,62 @@ function setDataDirFromIdentity(identity) {
   return dataDir
 }
 
-function isNewUserRequested() {
-  return process.argv.includes('--new-user') ||
-    app.commandLine.hasSwitch('new-user') ||
-    process.env.npm_config_new_user === 'true' ||
-    process.env.npm_config_new_user === '1'
+/**
+ * Switches the main process out of "welcome" mode into an account. Sets the
+ * account dataDir, reconfigures the per-account Electron paths and carries
+ * the language chosen on the welcome screen into accounts that never set one.
+ */
+function enterAccountMode(dir) {
+  welcomeMode = false
+  dataDir = dir
+  configureElectronDataPaths()
+  try {
+    let accountSettings = null
+    try {
+      accountSettings = JSON.parse(fs.readFileSync(path.join(dataDir, 'settings.json'), 'utf8'))
+    } catch {
+      // Account has no settings yet — nothing to seed into.
+    }
+    if (accountSettings && !accountSettings.locale) {
+      const welcomeSettings = JSON.parse(fs.readFileSync(path.join(dataRoot, 'settings.json'), 'utf8') || '{}')
+      if (welcomeSettings.locale) writeSettings({ locale: welcomeSettings.locale })
+    }
+  } catch {
+    // Best effort — the welcome locale is only a convenience.
+  }
 }
 
 /**
- * Packaged-app account picker. When there is more than one local account and
- * the app was launched from the installed .exe (no CLI launcher available),
- * we show a small window listing the accounts instead of throwing.
- * Resolves to:
- *   - the chosen account folder key
- *   - '__new__' to start the new-account flow
- *   - null if the user cancelled (the app should exit)
+ * Resolves which account the app will run, BEFORE the window is created.
+ *
+ *  - `--user-key <key>` (used by start.js/start-all.js for multi-instance):
+ *    opens that specific account directly, skipping the welcome screen.
+ *  - Any other launch (packaged .exe, plain `electron .`, `--new-user`):
+ *    enters WELCOME MODE — the welcome screen always shows the account
+ *    selector (even with 0 or 1 accounts), plus import/create options.
  */
-function chooseAccountPackaged(keys) {
-  return new Promise((resolve) => {
-    let settled = false
-    const finish = (value) => {
-      if (settled) return
-      settled = true
-      resolve(value)
-    }
-    const picker = new BrowserWindow({
-      width: 460,
-      height: 420,
-      resizable: false,
-      minimizable: false,
-      maximizable: false,
-      title: 'Coherence',
-      backgroundColor: '#0d1117',
-      show: false,
-      webPreferences: {
-        preload: path.join(__dirname, 'picker-preload.js'),
-        contextIsolation: true,
-        nodeIntegration: false,
-        sandbox: true
-      }
-    })
-    picker.once('ready-to-show', () => picker.show())
-    picker.on('closed', () => finish(null))
-    picker.webContents.on('did-finish-load', () => {
-      picker.webContents.send('picker:accounts', keys)
-    })
-    ipcMain.once('picker:choose', (_evt, key) => finish(key))
-    ipcMain.once('picker:cancel', () => finish(null))
-    picker.loadFile(path.join(__dirname, 'renderer', 'picker.html')).catch((err) => {
-      console.error('[Picker]', err)
-      finish(null)
-    })
-  })
-}
-
-async function resolveDataDir() {
+function resolveDataDir() {
   migrateLegacyData(dataRoot)
   const requestedKey = parseUserKeyArg()
-  const newUserRequested = isNewUserRequested()
-  const keys = listUserKeys(dataRoot)
-  if (newUserRequested && !requestedKey) {
-    dataDir = dataRoot
-  } else if (requestedKey) {
+  if (requestedKey) {
+    welcomeMode = false
     dataDir = userDataDir(dataRoot, requestedKey)
     const identity = readIdentity(path.join(dataDir, 'identity.json'))
     if (identity && !identityMatchesKey(identity, requestedKey)) {
       throw new Error('A identidade encontrada não corresponde à chave informada em --user-key.')
     }
-  } else if (keys.length === 1) {
-    dataDir = userDataDir(dataRoot, keys[0])
-  } else if (keys.length > 1 && !newUserRequested) {
-    if (app.isPackaged) {
-      const chosen = await chooseAccountPackaged(keys)
-      if (chosen === null) {
-        dataDir = null // cancelled — main() exits
-        app.quit()
-        return
-      }
-      dataDir = chosen === '__new__' ? dataRoot : userDataDir(dataRoot, chosen)
-    } else {
-      throw new Error('Há mais de um usuário local. Inicie com --user-key <chave-publica> ou --new-user.')
-    }
-  } else {
-    dataDir = dataRoot
+    return
   }
+  welcomeMode = true
+  dataDir = dataRoot
 }
 
 function configureElectronDataPaths() {
-  const profileName = isNewUserRequested() && dataDir === dataRoot
-    ? path.join('new-user', String(process.pid))
+  // The welcome screen (no account chosen yet) uses a fixed profile; every
+  // account uses its own profile so concurrent instances never share the
+  // session/cache directories in %TEMP%.
+  const profileName = welcomeMode
+    ? 'welcome'
     : path.basename(dataDir)
   const electronDataDir = path.join(os.tmpdir(), 'coherence-electron', profileName)
   app.setPath('userData', electronDataDir)
@@ -360,6 +347,7 @@ async function createNewUserIdentity(username) {
   const crypto = require('node:crypto')
   const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519')
   setDataDirFromIdentity({ publicKey: publicKey.export({ type: 'spki', format: 'pem' }) })
+  enterAccountMode(dataDir)
   fs.mkdirSync(dataDir, { recursive: true })
   fs.writeFileSync(path.join(dataDir, 'identity.json'), JSON.stringify({
     publicKey: publicKey.export({ type: 'spki', format: 'pem' }),
@@ -368,6 +356,8 @@ async function createNewUserIdentity(username) {
   await startNode()
   if (username) {
     await node.updateMyProfile({ nome: String(username).trim() })
+    // Cache the display name for the welcome account selector.
+    writeAccountName(dataDir, String(username).trim())
   }
   return { publicKeyHex: node.myPublicKeyHex }
 }
@@ -401,13 +391,55 @@ function forward(channel) {
   }
 }
 
+/**
+ * Hands a parsed coherence:// target to the renderer. If the renderer has not
+ * subscribed to the 'deeplink' event yet (e.g. still on the welcome screen),
+ * the target stays in `pendingDeepLink` and is delivered by app:renderer-ready
+ * once the main app boots.
+ */
+function deliverDeepLink(target) {
+  pendingDeepLink = target
+  if (rendererDeepLinkReady && mainWindow && !mainWindow.isDestroyed()) {
+    pendingDeepLink = null
+    mainWindow.webContents.send('p2p:event:deeplink', target)
+  }
+}
+
+/**
+ * Starts the loopback deep-link server for this process and registers the
+ * instance in the machine-wide registry, so other coherence:// dispatches can
+ * route links to this window. Welcome-mode uses the 'welcome' account key.
+ */
+function startDeepLinkListener() {
+  const accountKey = welcomeMode ? 'welcome' : path.basename(dataDir)
+  startDeepLinkServer(accountKey, (url) => {
+    const target = parseCoherenceUrl(url)
+    if (target) deliverDeepLink(target)
+  }).then((server) => {
+    if (!server) return // another process owns this account's port — fine
+    deepLinkServer = server
+    deepLinkUnregister = registerInstance({ accountKey, port: server.port })
+  }).catch((err) => {
+    console.error('[deep-link] Could not start deep-link listener:', err)
+  })
+}
+
 function registerIpcHandlers() {
   // Guards: during reset/quit the `node` can be null while the renderer still
   // makes calls (e.g. reacting to peers-changed from shutdown). They return
   // default values instead of throwing a TypeError in the main process.
   ipcMain.handle('p2p:get-my-key', () => node ? node.myPublicKeyHex : null)
   ipcMain.handle('p2p:get-profile', () => node ? node.getMyProfile() : null)
-  ipcMain.handle('p2p:update-profile', (_evt, patch) => node ? node.updateMyProfile(patch) : null)
+  ipcMain.handle('p2p:update-profile', async (_evt, patch) => {
+    if (!node) return null
+    const result = await node.updateMyProfile(patch)
+    // Keep the cached display name (used by the welcome account selector) in
+    // sync with the profile.
+    if (patch && typeof patch.nome === 'string' && patch.nome.trim()) {
+      writeAccountName(dataDir, patch.nome)
+    }
+    return result
+  })
   ipcMain.handle('p2p:publish-post', (_evt, post) => node ? node.publishPost(post) : null)
   ipcMain.handle('p2p:follow', (_evt, key) => node ? node.follow(key) : null)
   ipcMain.handle('p2p:unfollow', (_evt, key) => node ? node.unfollow(key) : null)
@@ -421,9 +453,39 @@ function registerIpcHandlers() {
   // Hardcoded suggested users (sponsors/featured) shown at the top of the search screen.
   ipcMain.handle('p2p:get-suggested-users', () => SUGGESTED_USERS)
   ipcMain.handle('p2p:get-posts-of', (_evt, key) => node ? node.getPostsOf(key) : null)
+  // Loads a user's core on demand (for coherence:// links to users you do not
+  // follow yet). Returns true when the profile/posts are readable.
+  ipcMain.handle('p2p:ensure-profile-loaded', (_evt, key) => node ? node.ensureProfileLoaded(key) : false)
+  // Marks the renderer as ready to receive deep links and returns any link
+  // that arrived before the main app booted (e.g. while on the welcome screen).
+  ipcMain.handle('app:renderer-ready', () => {
+    rendererDeepLinkReady = true
+    const target = pendingDeepLink
+    pendingDeepLink = null
+    return target
+  })
   ipcMain.handle('setup:get-settings', () => readSettings())
   ipcMain.handle('setup:set-settings', (_evt, settings) => writeSettings(settings))
   ipcMain.handle('setup:check-identity', () => fs.existsSync(path.join(dataDir, 'identity.json')))
+  ipcMain.handle('setup:list-accounts', () => listUserAccounts(dataRoot))
+  ipcMain.handle('setup:open-account', async (_evt, key) => {
+    const normalized = String(key || '').toLowerCase()
+    if (!/^[0-9a-f]{64}$/.test(normalized)) throw new Error('Chave de conta inválida.')
+    const dir = userDataDir(dataRoot, normalized)
+    if (!fs.existsSync(path.join(dir, 'identity.json'))) {
+      throw new Error('Conta não encontrada.')
+    }
+    enterAccountMode(dir)
+    const publicKeyHex = await startNode({ recovery: !isEstablished(dataDir) })
+    // Cache the display name so the welcome selector shows "Conta N - Nome".
+    try {
+      const profile = node && await node.getMyProfile()
+      if (profile && profile.nome) writeAccountName(dataDir, profile.nome)
+    } catch {
+      // Best effort — the selector falls back to "Conta N".
+    }
+    return { publicKeyHex, state: node.lifecycleState }
+  })
   ipcMain.handle('setup:import-identity', async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
       title: 'Importar identidade',
@@ -435,6 +497,7 @@ function registerIpcHandlers() {
     const identity = JSON.parse(fs.readFileSync(sourcePath, 'utf8'))
     validateIdentity(identity)
     setDataDirFromIdentity(identity)
+    enterAccountMode(dataDir)
     fs.mkdirSync(dataDir, { recursive: true })
     fs.copyFileSync(sourcePath, path.join(dataDir, 'identity.json'))
     return { canceled: false, publicKeyHex: await startNode({ recovery: true }), state: node.lifecycleState }
@@ -529,12 +592,50 @@ function registerIpcHandlers() {
 async function main() {
   dataRoot = path.join(app.getPath('documents'), 'coherence-data')
   await app.whenReady()
+
+  // Deep-link dispatch: if the OS launched us for a coherence:// URL and some
+  // instance is already running, hand the link to it and quit. Otherwise keep
+  // it as pending and apply it after an account is chosen.
+  const initialUrl = extractCoherenceUrl(process.argv)
+  if (initialUrl) {
+    const parsed = parseCoherenceUrl(initialUrl)
+    if (parsed) {
+      const target = findActiveInstance()
+      if (target && (await sendDeepLinkTo(target.port, initialUrl))) {
+        app.quit()
+        return
+      }
+      pendingDeepLink = parsed
+    }
+  }
+
   await resolveDataDir()
-  if (dataDir == null) return // cancelled the account picker
+  if (dataDir == null) return
   configureElectronDataPaths()
+  startDeepLinkListener()
+
+  // Register coherence:// as the default protocol handler. In dev (npm start)
+  // this points the scheme at the current Electron + app path; the packaged
+  // installer already registers it via build.protocols in package.json.
+  if (process.platform === 'win32' && !app.isPackaged) {
+    try {
+      // Dev apps MUST register with the app path, otherwise Windows would
+      // launch electron.exe with only the URL (no app) and nothing would open.
+      const args = process.defaultApp
+        ? [path.resolve(process.argv[1])]
+        : [path.resolve(app.getAppPath())]
+      app.setAsDefaultProtocolClient('coherence', process.execPath, args)
+    } catch (err) {
+      console.error('[deep-link] Could not register coherence:// protocol:', err)
+    }
+  }
 
   registerIpcHandlers()
+  // Auto-start only when an account was explicitly opened (--user-key /
+  // multi-instance launchers). On the welcome screen the account is started
+  // later, when the user picks it from the selector.
   if (
+    !welcomeMode &&
     fs.existsSync(path.join(dataDir, 'identity.json')) &&
     isEstablished(dataDir)
   ) {
@@ -559,6 +660,16 @@ app.on('window-all-closed', () => {
 // Closes the swarm and Corestore carefully before exiting, to avoid corrupting
 // the local storage.
 app.on('before-quit', (event) => {
+  // Always release the deep-link server and registry entry, even on the early
+  // exit path (welcome screen / dispatch without a node).
+  if (deepLinkServer) {
+    try { deepLinkServer.close() } catch { /* already closed */ }
+    deepLinkServer = null
+  }
+  if (deepLinkUnregister) {
+    try { deepLinkUnregister() } catch { /* best effort */ }
+    deepLinkUnregister = null
+  }
   if (quitting || (!node && !statusUpdateInterval)) return
   event.preventDefault()
   quitting = true

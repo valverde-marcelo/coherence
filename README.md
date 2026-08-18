@@ -158,6 +158,29 @@ the reason is shown in the terminal and the full log is at
 2. Everyone who connected to your node will appear
 3. Click a name to view the full profile
 
+## 🔗 Deep links (coherence://)
+
+The app registers the `coherence://` protocol (Windows): a link is clickable and
+opens the app — routing to any already-open window, or launching it when none is
+running. Supported routes:
+
+- `coherence://profile/<64-hex-public-key>` — opens the user's profile (yours or
+  someone else's).
+- `coherence://post/<64-hex-public-key>/<seq>` — opens the profile and scrolls to
+  that specific post (`#<seq>` is shown in the post footer).
+
+You can share these links (e.g. copy/paste in WhatsApp) to point people to your
+profile or to a specific post. If the target user is not followed yet, the app
+loads their core on demand; if the post has not synced yet, the profile opens
+with a discreet notice.
+
+> **Note (WhatsApp/chat apps):** many chat apps only auto-linkify `http`/`https`
+> links, so a raw `coherence://...` may appear as plain text there. The scheme
+> works natively in browsers (with an "open app?" prompt) and in apps that
+> support custom URI schemes. The protocol is registered by the **NSIS**
+> installer (`build.protocols` in `v1/package.json`); the **portable** `.exe`
+> cannot persist the registration (a limitation of the portable format).
+
 ## 🎯 Official account & suggested users
 
 The app ships with two hardcoded, app-level concepts (both in
@@ -211,6 +234,8 @@ This runs real integration tests (`test/`) against an **isolated local DHT**
 - `test-import-cancel-no-corestore.js` — importing without a seeder and canceling doesn't create `corestore`; recovering with a seeder promotes the storage and writes the recovery marker.
 - `test-auto-follow-official.js` — new users auto-follow the official account; restart doesn't duplicate it and unfollow is not reversed by a later restart.
 - `test-suggested-users.js` — validates the format of `OFFICIAL_COHERENCE_KEY` and `SUGGESTED_USERS`.
+- `test-deep-link-url.js` — parses/validates `coherence://profile` and `coherence://post` URLs.
+- `test-deep-link-router.js` — the machine-wide registry and the loopback URL delivery used to route links to running instances.
 
 ## 🔐 Privacy & Security
 
@@ -292,9 +317,10 @@ Logs are printed to the console during execution:
 Windows executables — **installer (NSIS)** and **portable** — are published on
 [GitHub Releases](https://github.com/valverde-marcelo/coherence/releases).
 
-The app checks for updates against GitHub Releases on startup (max once a day)
-and through **Settings → "verificar atualizações"**. When a newer release is
-available, a banner appears with a download link. Because your data lives in
+The app checks for updates against GitHub Releases every time it starts and
+through **Settings → "verificar atualizações"**. When a newer release is
+available, a discreet bar appears overlaid at the bottom of the main screen
+with a download link and a close button. Because your data lives in
 `~/Documents/coherence-data` (outside the installation folder), updating by
 reinstalling over the current version **preserves your identity, profile, posts
 and settings**.

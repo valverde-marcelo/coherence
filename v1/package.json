@@ -1,6 +1,6 @@
 {
   "name": "coherence",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Distributed P2P social network - Hyperswarm/Corestore/Hyperbee core + Electron interface",
   "main": "main.js",
   "private": true,
@@ -19,7 +19,7 @@
     "make-icon": "node scripts/make-icon.js",
     "dist": "electron-builder --win",
     "dist:dir": "electron-builder --dir",
-    "test": "node test/test-posts-and-unfollow.js && node test/test-integration-follow-sync.js && node test/test-follow-target.js && node test/test-user-social.js && node test/test-search-transitive.js && node test/test-integration-seeding.js && node test/test-persistence.js && node test/test-restart-after-stop-race.js && node test/test-identity-recovery.js && node test/test-recovery-timeout.js && node test/test-import-cancel-no-corestore.js && node test/test-legacy-migration.js && node test/test-auto-follow-official.js && node test/test-suggested-users.js"
+    "test": "node test/test-posts-and-unfollow.js && node test/test-integration-follow-sync.js && node test/test-follow-target.js && node test/test-user-social.js && node test/test-profile-posts-unknown-user.js && node test/test-profile-posts-followed.js && node test/test-search-transitive.js && node test/test-integration-seeding.js && node test/test-persistence.js && node test/test-restart-after-stop-race.js && node test/test-identity-recovery.js && node test/test-recovery-timeout.js && node test/test-import-cancel-no-corestore.js && node test/test-legacy-migration.js && node test/test-auto-follow-official.js && node test/test-suggested-users.js && node test/test-deep-link-url.js && node test/test-deep-link-router.js"
   },
   "build": {
     "appId": "dev.coherence.app",
@@ -31,7 +31,6 @@
     "files": [
       "main.js",
       "preload.js",
-      "picker-preload.js",
       "src/**/*",
       "renderer/**/*",
       "package.json"
@@ -61,8 +60,16 @@
           ]
         }
       ],
-      "icon": "build/icon.ico"
+      "icon": "build/icon.png"
     },
+    "protocols": [
+      {
+        "name": "Coherence",
+        "schemes": [
+          "coherence"
+        ]
+      }
+    ],
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,

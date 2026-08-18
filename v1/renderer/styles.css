@@ -89,6 +89,11 @@ body {
 .setup-select { width: 100%; padding: 9px 10px; color: var(--paper); background: var(--panel-raised); border: 1px solid var(--line); border-radius: var(--radius); }
 .setup-select:focus { outline: none; border-color: var(--relay-dim); }
 
+/* ---------------- setup: account selector ---------------- */
+.setup-account-section { margin-bottom: 28px; }
+.setup-account-hint { margin: 10px 0 0; color: var(--muted); font-size: 12.5px; line-height: 1.45; }
+.setup-open-btn { margin-top: 12px; width: 100%; }
+
 /* ---------------- setup: Terms of Use ---------------- */
 .setup-terms__h {
   margin: 14px 0 4px;
@@ -494,6 +499,7 @@ button, input, textarea {
 /* (center area styles - see .center-area) */
 
 .composer {
+  position: relative;
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -530,18 +536,125 @@ button, input, textarea {
 .composer-image-label:hover { color: var(--relay); border-color: var(--relay-dim); }
 .composer-image-label.has-image { color: var(--relay); border-style: solid; border-color: var(--relay-dim); }
 
-/* ---------------- update banner ---------------- */
+/* Composer tools (emoji + image), counter and hint */
+.composer-tools { display: flex; align-items: center; gap: 8px; position: relative; }
+
+.composer-tool-btn {
+  font-size: 16px;
+  line-height: 1;
+  background: transparent;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  color: var(--muted);
+  cursor: pointer;
+  padding: 5px 7px;
+}
+.composer-tool-btn:hover { color: var(--relay); border-color: var(--relay-dim); }
+.composer-tool-btn.emoji-btn--active { color: var(--relay); border-style: solid; border-color: var(--relay-dim); }
+
+.composer-counter-wrap { display: flex; align-items: center; gap: 10px; }
+.composer-counter {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+.composer-counter--over { color: var(--danger); font-weight: 700; }
+
+.composer-hint {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--muted);
+  margin: 0;
+  opacity: 0.75;
+}
+
+/* Emoji picker panel */
+.emoji-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 60;
+  width: min(320px, 78vw);
+  background: var(--panel-raised);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.emoji-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 6px 6px 4px;
+  border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+  flex: none;
+}
+
+.emoji-tab {
+  flex: none;
+  font-size: 16px;
+  line-height: 1;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  padding: 4px 6px;
+  opacity: 0.55;
+}
+.emoji-tab:hover { opacity: 1; background: var(--line); }
+.emoji-tab--active { opacity: 1; background: var(--line); }
+
+.emoji-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 1px;
+  padding: 8px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.emoji-btn {
+  font-size: 19px;
+  line-height: 1;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 4px;
+}
+.emoji-btn:hover { background: var(--line); }
+
+/* ---------------- update footer bar ---------------- */
+/* Discreet bar overlaid at the bottom of the main screen when a newer
+   release is available. Fixed so it overlaps the content instead of
+   pushing it down; z-index stays below modals (1000). */
 .update-banner {
-  display: flex; align-items: center; gap: 10px;
-  background: var(--panel-raised); border: 1px solid var(--signal-dim);
-  border-radius: 6px; padding: 10px 14px; margin-bottom: 16px;
-  font-size: 13px; color: var(--paper);
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  z-index: 950;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(92vw, 560px);
+  background: rgba(24, 32, 41, 0.96);
+  border: 1px solid var(--signal-dim);
+  border-radius: 8px;
+  padding: 9px 14px;
+  font-size: 12.5px;
+  color: var(--paper);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.42);
+  backdrop-filter: blur(6px);
 }
 .update-banner-link { color: var(--signal); font-weight: 600; text-decoration: none; }
 .update-banner-link:hover { text-decoration: underline; }
 .update-banner-close {
   margin-left: auto; background: transparent; border: none; color: var(--muted);
-  font-size: 18px; line-height: 1; cursor: pointer; padding: 0 4px;
+  font-size: 16px; line-height: 1; cursor: pointer; padding: 0 4px;
 }
 .update-banner-close:hover { color: var(--paper); }
 
@@ -588,6 +701,36 @@ button, input, textarea {
   color: var(--paper);
   white-space: pre-wrap;
 }
+
+.post-body strong { font-weight: 700; }
+.post-body em { font-style: italic; }
+.post-body del { text-decoration: line-through; }
+
+.post-line { white-space: pre-wrap; min-height: 1em; }
+
+.post-quote {
+  margin: 4px 0;
+  padding: 4px 12px;
+  border-left: 3px solid var(--relay-dim);
+  background: rgba(79, 179, 166, 0.08);
+  border-radius: 0 4px 4px 0;
+  font-style: italic;
+}
+.post-quote-line { white-space: pre-wrap; }
+
+.post-toggle {
+  display: inline-block;
+  margin-top: 4px;
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: var(--relay);
+  font-family: var(--ui);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.post-toggle:hover { color: var(--signal); text-decoration: underline; }
 
 .post-image {
   margin-top: 10px;
@@ -754,6 +897,9 @@ button, input, textarea {
 }
 
 .profile-view-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-family: var(--mono);
   font-size: 10px;
   color: var(--muted);
@@ -890,6 +1036,12 @@ button, input, textarea {
 
 .profile-view-posts {
   margin-top: 20px;
+}
+
+.profile-view-empty-text {
+  font-size: 13px;
+  color: var(--muted);
+  padding: 8px 0;
 }
 
 .profile-view-actions {
@@ -1059,4 +1211,71 @@ button, input, textarea {
   .donation-block { grid-column: auto; }
   .settings-body, .settings-header { padding-left: 18px; padding-right: 18px; }
   .settings-tabs { padding: 0 12px; }
+}
+
+/* Deep links (coherence://) */
+.post-highlight {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+  border-radius: 10px;
+  background: var(--panel-raised);
+  box-shadow: 0 0 0 1px var(--line), 0 0 18px rgba(88, 166, 255, 0.25);
+  transition: outline-color 0.3s ease;
+}
+.deep-link-notice {
+  position: fixed;
+  bottom: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 980;
+  background: rgba(24, 32, 41, 0.96);
+  border: 1px solid var(--line);
+  color: var(--paper);
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-size: 13px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
+}
+
+/* Share deep-link button (post header + profile key) */
+.post-share-btn,
+.profile-share-btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  width: 12px;
+  height: 12px;
+  padding: 0;
+  margin-left: 2px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  opacity: 0.5;
+  cursor: pointer;
+  transition: opacity 120ms ease, color 120ms ease, background 120ms ease;
+}
+.post-share-btn:hover,
+.profile-share-btn:hover {
+  opacity: 1;
+  color: var(--relay);
+  background: rgba(127, 132, 141, 0.12);
+}
+.post-share-btn.is-copied,
+.profile-share-btn.is-copied {
+  opacity: 1;
+  color: var(--signal);
+}
+
+/* Clickable coherence:// links inside post bodies */
+.post-body a.deep-link {
+  color: var(--signal);
+  text-decoration: none;
+  cursor: pointer;
+  word-break: break-all;
+}
+.post-body a.deep-link:hover {
+  text-decoration: underline;
 }

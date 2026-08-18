@@ -1,11 +1,18 @@
-- no modal de seleção de contas, do aplicativo executavel (windows):
-    - ele nao fecha depois de selecionada a primeira conta para abri ou nova conta para ser criada
-    - depois que o aplicativo é fechado, o modal tambem nao fecha
-    - se clinar em outra conta no modal, com o aplicativo aberto ou fechado, depois da primeira execucao, o modal nao responde mais (ou seja, nao é possivel abrir duas contas em paralelo, ou abrir sequenciamente -> abre a primeira -> fecha a primeira -> abre a segunda)
-    --> solucao: fechar o modal depois que o aplicativo iniciar
 
 - corrigir referencia ao btc lightning
 
-- permitir smiles e links dentro do post. limitar quantidade de caracteres.
-- redimensionar imagens localmente antes da postagem (ffmpeg/exif?)
-- mostrar alerta de nova versao do aplicativo na tela inicial.
+- [x] permitir smiles e links dentro do post. limitar quantidade de caracteres.
+    (implementado: seletor de emojis no composer, limite de 1000 caracteres na postagem,
+     "ver mais/ver menos" na exibição a partir de 300 caracteres, formatação estilo WhatsApp:
+     *negrito*, _itálico_, ~tachado~ e > citação)
+
+- [x] redimensionar imagens localmente antes da postagem (ffmpeg/exif?)
+    (implementado: compressão local via canvas/JPEG quando a imagem anexada excede 400KB)
+
+- [x] criar um protocolo para abrir links coherence://
+    (implementado: registro do protocolo coherence:// no Windows — NSIS via build.protocols
+     e dev via setAsDefaultProtocolClient. Rotas: coherence://profile/<chave64> e
+     coherence://post/<chave64>/<seq>. Roteamento para qualquer janela aberta via registro
+     em %TEMP%/coherence-deeplink + porta loopback por conta; se nenhuma estiver aberta,
+     o app abre e aplica o link após escolher a conta. Perfil de quem você não segue é
+     carregado sob demanda (ensureProfileLoaded); post abre o perfil e rola/destaca o post)

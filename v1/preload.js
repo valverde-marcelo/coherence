@@ -2,7 +2,7 @@
 
 const { contextBridge, ipcRenderer } = require('electron')
 
-const EVENTS = ['feed-updated', 'profile-updated', 'following-changed', 'peers-changed', 'following-status-update', 'recovery-updated']
+const EVENTS = ['feed-updated', 'profile-updated', 'following-changed', 'peers-changed', 'following-status-update', 'recovery-updated', 'deeplink']
 
 contextBridge.exposeInMainWorld('p2p', {
   getMyKey: () => ipcRenderer.invoke('p2p:get-my-key'),
@@ -20,11 +20,15 @@ contextBridge.exposeInMainWorld('p2p', {
   getPostsOf: (key) => ipcRenderer.invoke('p2p:get-posts-of', key),
   searchUsers: (query, opts) => ipcRenderer.invoke('p2p:search-users', query, opts),
   getSuggestedUsers: () => ipcRenderer.invoke('p2p:get-suggested-users'),
+  ensureProfileLoaded: (key) => ipcRenderer.invoke('p2p:ensure-profile-loaded', key),
+  rendererReady: () => ipcRenderer.invoke('app:renderer-ready'),
 
   setup: {
     getSettings: () => ipcRenderer.invoke('setup:get-settings'),
     setSettings: (settings) => ipcRenderer.invoke('setup:set-settings', settings),
     checkIdentity: () => ipcRenderer.invoke('setup:check-identity'),
+    listAccounts: () => ipcRenderer.invoke('setup:list-accounts'),
+    openAccount: (key) => ipcRenderer.invoke('setup:open-account', key),
     importIdentity: () => ipcRenderer.invoke('setup:import-identity'),
     createIdentity: (username) => ipcRenderer.invoke('setup:create-identity', username),
     startApp: () => ipcRenderer.invoke('setup:start-app'),

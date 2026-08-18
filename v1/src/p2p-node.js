@@ -35,6 +35,7 @@ const POST_PREFIX = 'post!'
 const POST_SEQ_DIGITS = 12
 const FOLLOWERS_PREFIX = 'followers!'
 const MAX_IMAGE_BASE64_BYTES = 400 * 1024 // ~400KB of base64 per image (v1 limit, see README)
+const MAX_POST_TEXT_LENGTH = 1000 // max characters per post (counted by code points)
 const HEX64 = /^[0-9a-f]{64}$/i
 
 function postKey(seq) {
@@ -873,6 +874,15 @@ class P2PNode extends EventEmitter {
     const { core } = entry
     if (this.lifecycleState === 'stopping' || this.lifecycleState === 'stopped') return false
 
+    // Sync the announced length with connected peers BEFORE the completeness
+    // check: a local copy can be complete up to its current length yet STALE
+    // (the owner appended new blocks while we were offline). Without this the
+    // early-return below would treat the stale copy as complete and never pull
+    // the new blocks.
+    if (core.peers && core.peers.length > 0) {
+      await withTimeout(core.update({ wait: true }), 1500, null)
+    }
+
     // If the local copy is already complete, no need to wait for the network.
     const localLen = core.length
     if (localLen > 0) {
@@ -899,6 +909,23 @@ class P2PNode extends EventEmitter {
       await new Promise((resolve) => setTimeout(resolve, 300))
     }
     return false
+  }
+
+  /**
+   * Best-effort BACKGROUND sync of a loaded core. Reading profile/posts from a
+   * freshly-opened core (a follower, or a user opened on demand) returns
+   * nothing until its blocks are downloaded, so this ensures the data arrives
+   * without blocking the read — the 'feed-updated' event re-renders the open
+   * profile once the blocks land. Serialized per entry so repeated reads and
+   * polling don't pile up overlapping downloads.
+   */
+  _ensureDownloaded(entry) {
+    if (!entry || !entry.core || entry.core.closed) return
+    if (this.lifecycleState === 'stopping' || this.lifecycleState === 'stopped') return
+    if (entry.syncPromise) return
+    entry.syncPromise = this._ensureFullDownload(entry)
+      .catch(() => false)
+      .finally(() => { entry.syncPromise = null })
   }
 
   /**
@@ -1113,12 +1140,29 @@ class P2PNode extends EventEmitter {
         entry = this.followerDataCache.get(pubKeyHex)
       }
 
+      // Not loaded yet — open the core on demand (same path as getUserSocial /
+      // ensureProfileLoaded) so the profile view works for any user we visit,
+      // even when we don't follow them (suggested users, search results,
+      // coherence:// links). Best-effort: an unreachable/invalid key returns null.
+      if (!entry) {
+        try {
+          entry = await this._loadFollowerData(pubKeyHex, true)
+        } catch (err) {
+          console.log('[getProfile] ⚠️ Could not open core on demand for:', pubKeyHex.slice(0, 16))
+          return null
+        }
+      }
+
       console.log('[getProfile] Entry found?', !!entry)
 
       if (!entry) {
         console.log('[getProfile] ⚠️ Entry not found in this.followed nor in this.followerDataCache')
         return null
       }
+
+      // Make sure the core's data downloads in the background — a freshly-opened
+      // core may have no blocks yet; 'feed-updated' refreshes the UI once they land.
+      this._ensureDownloaded(entry)
 
       const result = await withTimeout(entry.bee.get('profile'), this.readTimeoutMs, null)
       // A synced profile ALWAYS has `nome` (the app creates one with a default).
@@ -1206,6 +1250,9 @@ class P2PNode extends EventEmitter {
       }
       if (!entry) return null
 
+      // Ensure the core's data (profile + posts) downloads in the background.
+      this._ensureDownloaded(entry)
+
       const profileResult = await withTimeout(entry.bee.get('profile'), this.readTimeoutMs, null)
       const value = profileResult && profileResult.value
       const following = (value && Array.isArray(value.followList)) ? value.followList : []
@@ -1231,6 +1278,28 @@ class P2PNode extends EventEmitter {
         following,
         followers,
         sincronizando: !value || value.nome === undefined
+      }
+    })
+  }
+
+  /**
+   * Ensures a user's core is loaded so their profile/posts can be read, even
+   * when they are neither followed nor a follower. Opens the core on demand
+   * (same path as getUserSocial/searchUsers) WITHOUT sending a follow-request.
+   * Used by coherence:// deep links, which can point to arbitrary users.
+   *
+   * @param {string} pubKeyHex - the user's public key (64 hex)
+   * @returns {Promise<boolean>} true when the core is available to read
+   */
+  async ensureProfileLoaded(pubKeyHex) {
+    return this._runOperation(async () => {
+      if (pubKeyHex === this.myPublicKeyHex) return true
+      if (this.followed.has(pubKeyHex) || this.followerDataCache.has(pubKeyHex)) return true
+      try {
+        await this._loadFollowerData(pubKeyHex, true)
+        return true
+      } catch (err) {
+        return false
       }
     })
   }
@@ -1364,7 +1433,7 @@ class P2PNode extends EventEmitter {
     })
   }
 
-  /** Returns all posts of a specific user (followed or follower). */
+  /** Returns all posts of a specific user (followed, follower or opened on demand). */
   async getPostsOf(pubKeyHex) {
     return this._runOperation(async () => {
       if (pubKeyHex === this.myPublicKeyHex) {
@@ -1378,7 +1447,24 @@ class P2PNode extends EventEmitter {
         entry = this.followerDataCache.get(pubKeyHex)
       }
 
+      // Not loaded yet — open the core on demand (same path as getProfile /
+      // getUserSocial) so the profile page shows the posts of any user we
+      // visit, even when we don't follow them. Best-effort: returns [] when
+      // the key is unreachable/invalid.
+      if (!entry) {
+        try {
+          entry = await this._loadFollowerData(pubKeyHex, true)
+        } catch (err) {
+          return []
+        }
+      }
+
       if (!entry) return []
+
+      // Ensure the core's posts download in the background (freshly-opened
+      // follower / on-demand cores may have no blocks yet).
+      this._ensureDownloaded(entry)
+
       return this._postsFrom(pubKeyHex, entry.bee)
     })
   }
@@ -1400,6 +1486,9 @@ class P2PNode extends EventEmitter {
       }
       if (tipo === 'texto' && !texto) {
         throw new Error('post de texto precisa de conteúdo')
+      }
+      if (texto && [...String(texto)].length > MAX_POST_TEXT_LENGTH) {
+        throw new Error(`texto excede o limite de ${MAX_POST_TEXT_LENGTH} caracteres`)
       }
       if (tipo === 'imagem') {
         if (!imagem || !imagem.dataBase64 || !imagem.mime) {

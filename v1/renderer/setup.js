@@ -3,6 +3,10 @@
 const setupEls = {
   screen: document.getElementById('setup-screen'),
   locale: document.getElementById('setup-locale'),
+  accountSection: document.getElementById('setup-account-section'),
+  account: document.getElementById('setup-account'),
+  noAccounts: document.getElementById('setup-no-accounts'),
+  openButton: document.getElementById('setup-open'),
   importButton: document.getElementById('setup-import'),
   createButton: document.getElementById('setup-create'),
   createForm: document.getElementById('setup-create-form'),
@@ -23,6 +27,9 @@ const setupEls = {
   cancelRecovery: document.getElementById('setup-cancel-recovery')
 }
 
+// Accounts listed by the welcome screen (cached so the combo can be
+// re-rendered on locale change without re-fetching).
+let welcomeAccounts = []
 let recoveryMonitorTimer = null
 let recoveryPhase = 'searching'
 let recoveryStalled = false
@@ -123,10 +130,49 @@ function setBusy(busy) {
   setupEls.createButton.disabled = busy
   setupEls.locale.disabled = busy
   setupEls.username.disabled = busy
+  setupEls.account.disabled = busy
+  setupEls.openButton.disabled = busy
   if (setupEls.confirm) setupEls.confirm.disabled = busy
   // When the busy state ends, re-apply the terms gate so the actions stay
-  // locked unless the Terms of Use were accepted.
-  if (!busy) updateTermsGate()
+  // locked unless the Terms of Use were accepted; also restore the account
+  // open button's availability.
+  if (!busy) {
+    updateTermsGate()
+    setupEls.openButton.disabled = welcomeAccounts.length === 0
+  }
+}
+
+/**
+ * Fetches the local accounts and fills the welcome-screen selector with
+ * "Conta N - Nome do Usuário" entries (or "Account N - Name" in English).
+ */
+async function populateAccounts() {
+  try {
+    welcomeAccounts = await window.p2p.setup.listAccounts()
+  } catch {
+    welcomeAccounts = []
+  }
+  renderAccountCombo()
+}
+
+function renderAccountCombo() {
+  const select = setupEls.account
+  select.innerHTML = ''
+  welcomeAccounts.forEach((acc, index) => {
+    const option = document.createElement('option')
+    option.value = acc.key
+    // Accounts that were never opened since this feature (e.g. imported) have
+    // no cached name yet — show a short key so they stay distinguishable.
+    const nome = acc.nome && acc.nome.trim()
+      ? acc.nome
+      : acc.key.slice(0, 8) + '…'
+    option.textContent = window.coherenceI18n.text('accountLabel') + ' ' + (index + 1) + ' - ' + nome
+    select.appendChild(option)
+  })
+  const hasAccounts = welcomeAccounts.length > 0
+  setupEls.accountSection.hidden = !hasAccounts
+  setupEls.noAccounts.hidden = hasAccounts
+  setupEls.openButton.disabled = !hasAccounts
 }
 
 function buildStalledMessage(info) {
@@ -223,6 +269,8 @@ async function bootSetup() {
 
   const hasIdentity = await window.p2p.setup.checkIdentity()
   if (hasIdentity) {
+    // An account is already open (opened via the welcome selector, imported,
+    // created, or launched with --user-key): go straight to the main app.
     const result = await window.p2p.setup.startApp()
     if (result && result.state === 'recovery') {
       showRecovery('searching')
@@ -232,8 +280,11 @@ async function bootSetup() {
     return
   }
 
+  // Welcome screen: ALWAYS show the account selector (even with 0 or 1
+  // accounts) plus the import/create options — no separate picker window.
   window.__coherenceSetupActive = true
   setupEls.screen.hidden = false
+  await populateAccounts()
 }
 
 window.p2p.on('recovery-updated', (result) => {
@@ -287,9 +338,25 @@ setupEls.cancelRecovery.addEventListener('click', async () => {
 setupEls.locale.addEventListener('change', async () => {
   const settings = await window.p2p.setup.setSettings({ locale: setupEls.locale.value })
   window.coherenceI18n.apply(settings.locale)
+  renderAccountCombo()
 })
 
 setupEls.termsAccept.addEventListener('change', updateTermsGate)
+
+setupEls.openButton.addEventListener('click', async () => {
+  const key = setupEls.account.value
+  if (!key) return
+  setupEls.error.hidden = true
+  setBusy(true)
+  setupStatus(window.coherenceI18n.text('openingAccount'))
+  try {
+    await window.p2p.setup.openAccount(key)
+    window.location.reload()
+  } catch (error) {
+    setupError(window.coherenceI18n.text('accountOpenError'))
+    setBusy(false)
+  }
+})
 
 setupEls.termsLink.addEventListener('click', (event) => {
   event.preventDefault()

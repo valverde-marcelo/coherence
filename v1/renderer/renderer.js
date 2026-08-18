@@ -50,6 +50,10 @@ const els = {
   composerImage: document.getElementById('composer-image'),
   composerImageName: document.getElementById('composer-image-name'),
   composerError: document.getElementById('composer-error'),
+  composerCounter: document.getElementById('composer-counter'),
+  composerPublishBtn: document.getElementById('composer-publish-btn'),
+  composerEmojiBtn: document.getElementById('composer-emoji-btn'),
+  composerEmojiPanel: document.getElementById('composer-emoji-panel'),
   feed: document.getElementById('feed'),
   feedEmpty: document.getElementById('feed-empty'),
 
@@ -61,7 +65,10 @@ const els = {
   // Templates
   postTemplate: document.getElementById('post-template'),
   peerTemplate: document.getElementById('peer-template'),
-  linkTemplate: document.getElementById('link-template')
+  linkTemplate: document.getElementById('link-template'),
+
+  // Update footer bar
+  updateBanner: document.getElementById('update-banner')
 }
 
 let myKey = null
@@ -76,8 +83,16 @@ let profileSocialData = null // { following, followers, ... } of the viewed user
 let profileSocialType = null // 'following' | 'followers' | null — which social list is open
 let profileSocialPanel = null // Panel element with the social list (profile view)
 let profileReturnTarget = 'feed' // 'feed' | 'search' — where "voltar" in the profile view returns to
+let profileRenderToken = 0 // Monotonic token so a stale showProfileView render never overwrites a newer one
+let profileRefreshTimer = null // Debounce timer for re-rendering the open profile view on new data
 let pendingImageName = null // Name of the image currently attached to the composer
 let lastRenderedLocale = null // Locale used by the last refreshMainUI render
+let lastUpdateResult = null // Last update-check result, so the footer bar can be re-rendered on locale change
+
+// Post limits (kept in sync with p2p-node.js)
+const MAX_POST_TEXT_LENGTH = 1000 // Posting limit in characters (code points)
+const POST_PREVIEW_CHARS = 300 // Collapsed preview length in the feed ("see more")
+const POST_IMAGE_MAX_BASE64 = 400 * 1024 // Max base64 length of an attached image (matches p2p-node.js)
 
 // =====================================================================
 // UTILITIES
@@ -104,6 +119,11 @@ function fileToBase64(file) {
     reader.onerror = () => reject(reader.error)
     reader.readAsDataURL(file)
   })
+}
+
+// Counts characters by code points, so emojis (surrogate pairs) count as 1.
+function countChars(str) {
+  return Array.from(String(str)).length
 }
 
 function showError(el, message) {
@@ -135,6 +155,295 @@ async function copyToClipboard(text, feedbackEl) {
   } catch (err) {
     console.error('Error copying to clipboard:', err)
   }
+}
+
+// =====================================================================
+// SHARE (coherence:// deep link)
+// =====================================================================
+
+// Static link icon (feather "link") — XSS-safe, no user data involved.
+const LINK_ICON_SVG =
+  '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+  '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>' +
+  '<path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>' +
+  '</svg>'
+
+/** Copies a coherence:// URL and briefly flashes the button as "copied". */
+async function copyShareUrl(url, btn) {
+  await copyToClipboard(url)
+  if (!btn) return
+  btn.title = t('copied')
+  btn.setAttribute('aria-label', t('copied'))
+  btn.classList.add('is-copied')
+  setTimeout(() => {
+    btn.title = t('shareExternally')
+    btn.setAttribute('aria-label', t('shareExternally'))
+    btn.classList.remove('is-copied')
+  }, 1200)
+}
+
+/** Wires the share button of a rendered post to copy its deep link. */
+function setupPostShare(node, post) {
+  const btn = node.querySelector('.post-share-btn')
+  if (!btn) return
+  btn.title = t('shareExternally')
+  btn.setAttribute('aria-label', t('shareExternally'))
+  const url = `coherence://post/${post.autor}/${post.seq}`
+  btn.addEventListener('click', (evt) => {
+    evt.stopPropagation()
+    copyShareUrl(url, btn)
+  })
+}
+
+// =====================================================================
+// POST TEXT — WhatsApp-style formatting + preview ("see more")
+// =====================================================================
+// Supports: *bold*, _italic_, ~strikethrough~ and > quote lines. Output is
+// built with DOM APIs only (no innerHTML with user data), so it is XSS-safe.
+const INLINE_FORMAT = [
+  { marker: '*', type: 'bold', tag: 'strong' },
+  { marker: '_', type: 'italic', tag: 'em' },
+  { marker: '~', type: 'strike', tag: 'del' }
+]
+
+// Index of the first unescaped occurrence of `ch` at/after `from` (odd number
+// of preceding backslashes means it is escaped).
+function indexOfUnescaped(str, ch, from) {
+  for (let i = from; i < str.length; i++) {
+    if (str[i] !== ch) continue
+    let bs = 0
+    for (let j = i - 1; j >= 0 && str[j] === '\\'; j--) bs++
+    if (bs % 2 === 0) return i
+  }
+  return -1
+}
+
+function unescapeMarkdown(text) {
+  return text.replace(/\\([*_~>\\])/g, '$1')
+}
+
+const HEX64 = /^[0-9a-f]{64}$/i
+
+/**
+ * Parses a coherence:// URL into a target the app can navigate to, mirroring
+ * src/deep-link.js (the renderer has no access to the main-process module).
+ * @returns {{route: 'profile'|'post', key: string, seq?: number}|null}
+ */
+function parseCoherenceLink(url) {
+  const trimmed = String(url || '').trim()
+  if (!trimmed.toLowerCase().startsWith('coherence://')) return null
+  let path = trimmed.slice('coherence://'.length)
+  const q = path.indexOf('?')
+  const h = path.indexOf('#')
+  const stop = q === -1 ? h : (h === -1 ? q : Math.min(q, h))
+  if (stop !== -1) path = path.slice(0, stop)
+  while (path.endsWith('/')) path = path.slice(0, -1)
+  const segments = path.split('/').filter(Boolean)
+  const [route, key, seqRaw] = segments
+  if (!route || !key || !HEX64.test(key)) return null
+  if (route.toLowerCase() === 'profile' && segments.length === 2) {
+    return { route: 'profile', key: key.toLowerCase() }
+  }
+  if (route.toLowerCase() === 'post' && segments.length === 3) {
+    const seq = Number(seqRaw)
+    if (Number.isInteger(seq) && seq >= 1) {
+      return { route: 'post', key: key.toLowerCase(), seq }
+    }
+  }
+  return null
+}
+
+// Appends `text` to `parent`, turning coherence:// deep links into clickable
+// <a> elements that navigate INSIDE the app. Everything else stays plain text.
+function appendTextWithLinks(parent, text) {
+  const needle = 'coherence://'
+  const lower = text.toLowerCase()
+  let last = 0
+  let idx = lower.indexOf(needle)
+  while (idx !== -1) {
+    if (idx > last) parent.appendChild(document.createTextNode(text.slice(last, idx)))
+    // Find the end of the token (whitespace).
+    let end = idx + needle.length
+    while (end < text.length && !/\s/.test(text[end])) end++
+    const raw = text.slice(idx, end)
+    // Trim trailing punctuation that is not part of the URL (e.g. "." or ",").
+    const url = raw.replace(/[.,;:!?)]+$/, '')
+    const parsed = parseCoherenceLink(url)
+    if (parsed) {
+      const a = document.createElement('a')
+      a.className = 'deep-link'
+      a.href = url
+      a.title = url
+      a.textContent = url
+      a.addEventListener('click', (evt) => {
+        evt.preventDefault()
+        evt.stopPropagation()
+        handleDeepLink(parsed)
+      })
+      parent.appendChild(a)
+      if (url.length < raw.length) parent.appendChild(document.createTextNode(raw.slice(url.length)))
+    } else {
+      parent.appendChild(document.createTextNode(raw))
+    }
+    last = idx + raw.length
+    idx = lower.indexOf(needle, last)
+  }
+  if (last < text.length) parent.appendChild(document.createTextNode(text.slice(last)))
+}
+
+// Parses `text` into a token tree: { type:'text', text } or
+// { type:'bold'|'italic'|'strike', children:[...] }.
+function parseInline(text) {
+  let best = null
+  for (const rule of INLINE_FORMAT) {
+    const openIdx = indexOfUnescaped(text, rule.marker, 0)
+    if (openIdx === -1) continue
+    const closeIdx = indexOfUnescaped(text, rule.marker, openIdx + 1)
+    if (closeIdx === -1) continue
+    if (!best || openIdx < best.openIdx) best = { rule, openIdx, closeIdx }
+  }
+  if (!best) return [{ type: 'text', text }]
+  const { rule, openIdx, closeIdx } = best
+  const tokens = []
+  if (openIdx > 0) tokens.push({ type: 'text', text: text.slice(0, openIdx) })
+  tokens.push({ type: rule.type, children: parseInline(text.slice(openIdx + 1, closeIdx)) })
+  tokens.push(...parseInline(text.slice(closeIdx + 1)))
+  return tokens
+}
+
+function appendInlineNodes(parent, tokens) {
+  for (const tok of tokens) {
+    if (tok.type === 'text') {
+      appendTextWithLinks(parent, unescapeMarkdown(tok.text))
+    } else {
+      const rule = INLINE_FORMAT.find((r) => r.type === tok.type)
+      const el = document.createElement(rule.tag)
+      appendInlineNodes(el, tok.children)
+      parent.appendChild(el)
+    }
+  }
+}
+
+const QUOTE_RE = /^>\s?/
+
+// Appends the formatted lines of `text` to `container` (blockquote lines are
+// grouped together). Handles newlines via block elements, preserving spaces.
+function appendFormattedText(container, text) {
+  const lines = String(text).split('\n')
+  let i = 0
+  while (i < lines.length) {
+    if (QUOTE_RE.test(lines[i])) {
+      const quote = document.createElement('blockquote')
+      quote.className = 'post-quote'
+      while (i < lines.length && QUOTE_RE.test(lines[i])) {
+        const line = document.createElement('div')
+        line.className = 'post-quote-line'
+        appendInlineNodes(line, parseInline(lines[i].replace(QUOTE_RE, '')))
+        quote.appendChild(line)
+        i++
+      }
+      container.appendChild(quote)
+    } else {
+      const line = document.createElement('div')
+      line.className = 'post-line'
+      appendInlineNodes(line, parseInline(lines[i]))
+      container.appendChild(line)
+      i++
+    }
+  }
+}
+
+// Collapses a long post to the preview length, cutting at the last space so
+// words are not split (never cuts a surrogate pair).
+function truncatePreview(text, max) {
+  const chars = Array.from(String(text))
+  if (chars.length <= max) return text
+  let cut = chars.slice(0, max).join('')
+  const lastSpace = cut.lastIndexOf(' ')
+  if (lastSpace > max * 0.6) cut = cut.slice(0, lastSpace)
+  return cut.trimEnd()
+}
+
+// Renders a post body: preview + "see more/see less" toggle when the text
+// exceeds POST_PREVIEW_CHARS.
+function renderPostBody(container, texto) {
+  const full = String(texto || '')
+  container.innerHTML = ''
+  if (!full) return
+  const needsToggle = countChars(full) > POST_PREVIEW_CHARS
+  let expanded = false
+
+  const paint = () => {
+    container.innerHTML = ''
+    appendFormattedText(container, expanded ? full : truncatePreview(full, POST_PREVIEW_CHARS))
+    if (needsToggle) {
+      const btn = document.createElement('button')
+      btn.type = 'button'
+      btn.className = 'post-toggle'
+      btn.textContent = expanded ? t('seeLess') : t('seeMore')
+      btn.addEventListener('click', () => {
+        expanded = !expanded
+        paint()
+      })
+      container.appendChild(btn)
+    }
+  }
+  paint()
+}
+
+// =====================================================================
+// IMAGE COMPRESSION — local, when the attached image exceeds the limit
+// =====================================================================
+// If the base64 of the selected file is larger than POST_IMAGE_MAX_BASE64
+// (~400KB), the image is downscaled and re-encoded locally as JPEG until it
+// fits. Returns { dataBase64, mime, compressed }.
+
+function loadImageElement(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => resolve(img)
+    img.onerror = () => reject(new Error(t('imageCompressError')))
+    img.src = src
+  })
+}
+
+// Re-encodes `img` at w×h as JPEG, trying the given qualities; returns the
+// first base64 that fits under the limit, or null.
+function encodeJpegWithinLimit(img, w, h, qualities) {
+  const canvas = document.createElement('canvas')
+  canvas.width = w
+  canvas.height = h
+  const ctx = canvas.getContext('2d')
+  ctx.fillStyle = '#ffffff'
+  ctx.fillRect(0, 0, w, h)
+  ctx.drawImage(img, 0, 0, w, h)
+  for (const q of qualities) {
+    const dataUrl = canvas.toDataURL('image/jpeg', q)
+    const [, b64] = String(dataUrl).split(',')
+    if (b64 && b64.length <= POST_IMAGE_MAX_BASE64) return b64
+  }
+  return null
+}
+
+async function compressImageIfNeeded(file, dataBase64) {
+  if (dataBase64.length <= POST_IMAGE_MAX_BASE64) {
+    return { dataBase64, mime: file.type, compressed: false }
+  }
+  const img = await loadImageElement(`data:${file.type};base64,${dataBase64}`)
+  const srcW = Math.max(1, img.naturalWidth || img.width)
+  const srcH = Math.max(1, img.naturalHeight || img.height)
+
+  const dims = [1600, 1280, 1024, 800, 640, 480, 320]
+  const qualities = [0.82, 0.7, 0.58, 0.46, 0.34]
+
+  for (const maxDim of dims) {
+    const scale = Math.min(1, maxDim / Math.max(srcW, srcH))
+    const w = Math.max(1, Math.round(srcW * scale))
+    const h = Math.max(1, Math.round(srcH * scale))
+    const out = encodeJpegWithinLimit(img, w, h, qualities)
+    if (out) return { dataBase64: out, mime: 'image/jpeg', compressed: true }
+  }
+  throw new Error(t('imageCompressFailed'))
 }
 
 // =====================================================================
@@ -267,7 +576,8 @@ function renderFeed(posts) {
     }
     
     node.querySelector('.post-time').textContent = formatTime(post.timestamp)
-    node.querySelector('.post-body').textContent = post.texto || ''
+    setupPostShare(node, post)
+    renderPostBody(node.querySelector('.post-body'), post.texto)
 
     if (post.tipo === 'imagem' && post.imagem) {
       const img = node.querySelector('.post-image')
@@ -285,6 +595,10 @@ function renderFeed(posts) {
 // =====================================================================
 
 async function showProfileView(pubKeyHex) {
+  // Token guard: if a newer showProfileView call started while this one was
+  // still reading data (opening a core on demand can take a while), discard
+  // this render so a stale profile/posts never overwrite the newer one.
+  const token = ++profileRenderToken
   try {
     currentViewingProfileKey = pubKeyHex
     
@@ -302,6 +616,12 @@ async function showProfileView(pubKeyHex) {
     } catch (err) {
       console.error('Error loading social graph:', err)
     }
+
+    // A newer profile was opened while we were reading data — abort this render.
+    if (token !== profileRenderToken) return
+    // The user navigated away (profile view closed) while we were reading data —
+    // don't resurrect a stale profile over the feed/search view.
+    if (currentViewingProfileKey !== pubKeyHex) return
     
     if (!profile) {
       console.warn('Profile not available yet')
@@ -336,7 +656,7 @@ async function showProfileView(pubKeyHex) {
     // Avatar - always show (placeholder if none)
     const avatar = document.createElement('div')
     avatar.className = 'profile-view-avatar'
-    if (profile.avatar) {
+    if (profile && profile.avatar) {
       const img = document.createElement('img')
       img.src = `data:${profile.avatar.mime};base64,${profile.avatar.dataBase64}`
       avatar.appendChild(img)
@@ -352,7 +672,7 @@ async function showProfileView(pubKeyHex) {
         font-size: 36px;
         color: var(--relay);
       `
-      placeholder.textContent = getInitials(profile.nome || t('userDefault'))
+      placeholder.textContent = getInitials((profile && profile.nome) || t('userDefault'))
       avatar.appendChild(placeholder)
     }
     header.appendChild(avatar)
@@ -372,6 +692,18 @@ async function showProfileView(pubKeyHex) {
     key.style.cursor = 'pointer'
     key.title = t('copyFullKey')
     key.addEventListener('click', () => copyToClipboard(pubKeyHex))
+    // Share button: copies the coherence://profile/<key> deep link.
+    const shareBtn = document.createElement('button')
+    shareBtn.type = 'button'
+    shareBtn.className = 'profile-share-btn'
+    shareBtn.title = t('shareExternally')
+    shareBtn.setAttribute('aria-label', t('shareExternally'))
+    shareBtn.innerHTML = LINK_ICON_SVG
+    shareBtn.addEventListener('click', (evt) => {
+      evt.stopPropagation()
+      copyShareUrl(`coherence://profile/${pubKeyHex}`, shareBtn)
+    })
+    key.appendChild(shareBtn)
     info.appendChild(key)
     
     if (profile?.bio) {
@@ -425,11 +757,12 @@ async function showProfileView(pubKeyHex) {
         
         const node = els.postTemplate.content.cloneNode(true)
         const authorEl = node.querySelector('.post-author')
-        authorEl.textContent = profile.nome || t('noName')
+        authorEl.textContent = (profile && profile.nome) || t('noName')
         authorEl.classList.add('is-me')
         
         node.querySelector('.post-time').textContent = formatTime(post.timestamp)
-        node.querySelector('.post-body').textContent = post.texto || ''
+        setupPostShare(node, post)
+        renderPostBody(node.querySelector('.post-body'), post.texto)
 
         if (post.tipo === 'imagem' && post.imagem) {
           const img = node.querySelector('.post-image')
@@ -438,16 +771,51 @@ async function showProfileView(pubKeyHex) {
         }
 
         node.querySelector('.post-footer').textContent = `#${post.seq}`
+        // data-seq goes on the ARTICLE element, not on the cloned fragment —
+        // DocumentFragment has no .dataset, and `node.dataset.seq = ...` would
+        // throw and abort the whole profile posts render. Used by highlightPost
+        // (coherence://post deep links).
+        node.querySelector('article').dataset.seq = String(post.seq)
         postsFeed.appendChild(node)
       }
       
       postsDiv.appendChild(postsFeed)
       els.profileView.appendChild(postsDiv)
+    } else {
+      // No posts yet — either the user truly has none, or the core is still
+      // syncing (a freshly-opened follower/on-demand core). Show a hint so the
+      // area isn't blank while the background download finishes; the next
+      // 'feed-updated' re-renders with the real posts.
+      const emptyDiv = document.createElement('div')
+      emptyDiv.className = 'profile-view-posts profile-view-empty'
+      const emptyTitle = document.createElement('div')
+      emptyTitle.className = 'eyebrow'
+      emptyTitle.textContent = t('posts')
+      emptyDiv.appendChild(emptyTitle)
+      const emptyText = document.createElement('p')
+      emptyText.className = 'profile-view-empty-text'
+      emptyText.textContent = (profile && profile.sincronizando) ? t('syncing') : t('noPostsOnProfile')
+      emptyDiv.appendChild(emptyText)
+      els.profileView.appendChild(emptyDiv)
     }
     
   } catch (err) {
     console.error('Error displaying profile:', err)
   }
+}
+
+// When a profile is open and new data for it arrives (e.g. the on-demand core
+// keeps downloading posts right after the first visit), re-render the profile
+// so the posts appear. Debounced: a burst of appends re-renders once.
+function scheduleProfileRefresh() {
+  if (els.profileViewContainer.hidden || !currentViewingProfileKey) return
+  if (profileRefreshTimer) clearTimeout(profileRefreshTimer)
+  profileRefreshTimer = setTimeout(() => {
+    profileRefreshTimer = null
+    if (!els.profileViewContainer.hidden && currentViewingProfileKey) {
+      showProfileView(currentViewingProfileKey)
+    }
+  }, 600)
 }
 
 // =====================================================================
@@ -633,6 +1001,7 @@ function refreshMainUI() {
     loadFeed()
   }
   refreshStatus()
+  if (lastUpdateResult && !els.updateBanner.hidden) showUpdateBanner(lastUpdateResult)
   if (pendingImageName) {
     els.composerImageName.textContent = pendingImageName
     els.composerImageName.classList.add('has-image')
@@ -894,7 +1263,7 @@ els.followForm.addEventListener('submit', async (evt) => {
   }
 })
 
-// Composer Image
+// Composer Image — compresses locally if the file exceeds the size limit.
 els.composerImage.addEventListener('change', async () => {
   const file = els.composerImage.files[0]
   if (!file) {
@@ -904,11 +1273,129 @@ els.composerImage.addEventListener('change', async () => {
     els.composerImageName.classList.remove('has-image')
     return
   }
-  const dataBase64 = await fileToBase64(file)
-  pendingImage = { dataBase64, mime: file.type }
-  pendingImageName = file.name
-  els.composerImageName.textContent = file.name
-  els.composerImageName.classList.add('has-image')
+  clearError(els.composerError)
+  try {
+    const dataBase64 = await fileToBase64(file)
+    const result = await compressImageIfNeeded(file, dataBase64)
+    pendingImage = { dataBase64: result.dataBase64, mime: result.mime }
+    pendingImageName = result.compressed ? `${file.name} (${t('imageCompressed')})` : file.name
+    els.composerImageName.textContent = pendingImageName
+    els.composerImageName.classList.add('has-image')
+  } catch (err) {
+    pendingImage = null
+    pendingImageName = null
+    els.composerImage.value = ''
+    els.composerImageName.textContent = t('addImage')
+    els.composerImageName.classList.remove('has-image')
+    showError(els.composerError, err.message || t('imageCompressError'))
+  }
+})
+
+// Composer character counter
+function updateComposerCounter() {
+  const len = countChars(els.composerText.value)
+  if (els.composerCounter) {
+    els.composerCounter.textContent = `${len}/${MAX_POST_TEXT_LENGTH}`
+    els.composerCounter.classList.toggle('composer-counter--over', len > MAX_POST_TEXT_LENGTH)
+  }
+  if (els.composerPublishBtn) {
+    els.composerPublishBtn.disabled = len > MAX_POST_TEXT_LENGTH
+  }
+}
+els.composerText.addEventListener('input', updateComposerCounter)
+
+// =====================================================================
+// EMOJI PICKER (WhatsApp-style)
+// =====================================================================
+function buildEmojiPanel() {
+  const panel = els.composerEmojiPanel
+  panel.innerHTML = ''
+  const tabs = document.createElement('div')
+  tabs.className = 'emoji-tabs'
+  const grid = document.createElement('div')
+  grid.className = 'emoji-grid'
+  panel.appendChild(tabs)
+  panel.appendChild(grid)
+
+  let activeTab = null
+  const categories = (window.coherenceEmojis) || []
+
+  const renderCategory = (cat) => {
+    grid.innerHTML = ''
+    for (const emoji of cat.emojis) {
+      const btn = document.createElement('button')
+      btn.type = 'button'
+      btn.className = 'emoji-btn'
+      btn.textContent = emoji
+      btn.title = emoji
+      btn.setAttribute('aria-label', emoji)
+      btn.addEventListener('click', () => insertEmoji(emoji))
+      grid.appendChild(btn)
+    }
+  }
+
+  categories.forEach((cat, index) => {
+    const tab = document.createElement('button')
+    tab.type = 'button'
+    tab.className = 'emoji-tab' + (index === 0 ? ' emoji-tab--active' : '')
+    tab.textContent = cat.icon
+    const labelKey = 'emojiCat' + cat.id.charAt(0).toUpperCase() + cat.id.slice(1)
+    const label = t(labelKey) || cat.id
+    tab.title = label
+    tab.setAttribute('aria-label', label)
+    tab.addEventListener('click', () => {
+      if (activeTab) activeTab.classList.remove('emoji-tab--active')
+      tab.classList.add('emoji-tab--active')
+      activeTab = tab
+      renderCategory(cat)
+    })
+    tabs.appendChild(tab)
+    if (index === 0) {
+      activeTab = tab
+      renderCategory(cat)
+    }
+  })
+}
+
+// Inserts an emoji at the textarea cursor (replacing any selection).
+function insertEmoji(emoji) {
+  const ta = els.composerText
+  const start = ta.selectionStart
+  const end = ta.selectionEnd
+  ta.value = ta.value.slice(0, start) + emoji + ta.value.slice(end)
+  const pos = start + emoji.length
+  ta.setSelectionRange(pos, pos)
+  ta.focus()
+  updateComposerCounter()
+}
+
+function toggleEmojiPanel() {
+  const show = els.composerEmojiPanel.hidden
+  els.composerEmojiPanel.hidden = !show
+  els.composerEmojiBtn.classList.toggle('emoji-btn--active', show)
+  if (show) buildEmojiPanel()
+}
+
+els.composerEmojiBtn.addEventListener('click', (e) => {
+  e.preventDefault()
+  toggleEmojiPanel()
+})
+
+// Close the picker when clicking/tabbing outside of it.
+document.addEventListener('click', (e) => {
+  if (els.composerEmojiPanel.hidden) return
+  if (els.composerEmojiPanel.contains(e.target)) return
+  if (e.target === els.composerEmojiBtn || els.composerEmojiBtn.contains(e.target)) return
+  els.composerEmojiPanel.hidden = true
+  els.composerEmojiBtn.classList.remove('emoji-btn--active')
+})
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !els.composerEmojiPanel.hidden) {
+    els.composerEmojiPanel.hidden = true
+    els.composerEmojiBtn.classList.remove('emoji-btn--active')
+    els.composerText.focus()
+  }
 })
 
 // Composer Submit
@@ -990,6 +1477,10 @@ els.composerForm.addEventListener('submit', async (evt) => {
     showError(els.composerError, t('composerErrorEmpty'))
     return
   }
+  if (countChars(texto) > MAX_POST_TEXT_LENGTH) {
+    showError(els.composerError, t('composerErrorTooLong').replace('{n}', String(MAX_POST_TEXT_LENGTH)))
+    return
+  }
 
   // Permanence alert before anything is broadcast to the network.
   const proceed = await confirmPublishPermanence()
@@ -1007,6 +1498,7 @@ els.composerForm.addEventListener('submit', async (evt) => {
     pendingImageName = null
     els.composerImageName.textContent = t('addImage')
     els.composerImageName.classList.remove('has-image')
+    updateComposerCounter()
     await loadFeed()
   } catch (err) {
     showError(els.composerError, err.message)
@@ -1309,7 +1801,12 @@ function startProfilePolling() {
 // BACKEND EVENTS
 // =====================================================================
 
-window.p2p.on('feed-updated', loadFeed)
+window.p2p.on('feed-updated', () => {
+  loadFeed()
+  // If a profile is open and its core just downloaded new blocks, re-render it
+  // so the posts show up (e.g. first visit to a user we don't follow yet).
+  scheduleProfileRefresh()
+})
 window.p2p.on('profile-updated', loadIdentity)
 window.p2p.on('following-changed', () => {
   loadFollowing()
@@ -1326,6 +1823,10 @@ window.p2p.on('peers-changed', () => {
   } else {
     console.log('[peers-changed] Followers tab is HIDDEN, not loading')
   }
+  // A peer just (re)connected to a core — if a profile is open, re-read it so
+  // the posts/profile arrive now that a seeder is reachable (the read triggers
+  // the background download).
+  scheduleProfileRefresh()
 })
 window.p2p.on('following-status-update', (list) => {
   renderFollowing(list)
@@ -1333,31 +1834,89 @@ window.p2p.on('following-status-update', (list) => {
 })
 
 // =====================================================================
-// UPDATE BANNER (startup check against GitHub Releases)
+// UPDATE FOOTER BAR (startup check against GitHub Releases)
 // =====================================================================
 
 function showUpdateBanner(result) {
-  const banner = document.getElementById('update-banner')
+  const banner = els.updateBanner
   if (!banner) return
+  lastUpdateResult = result
   const text = document.getElementById('update-banner-text')
   const link = document.getElementById('update-banner-link')
-  text.textContent = window.coherenceI18n.text('updateAvailable').replace('{version}', result.latest)
-  link.textContent = window.coherenceI18n.text('updateDownload')
-  link.addEventListener('click', (event) => {
+  const close = document.getElementById('update-banner-close')
+  if (!text || !link || !close) return
+  text.textContent = t('updateAvailable').replace('{version}', result.latest)
+  link.textContent = t('updateDownload')
+  link.onclick = (event) => {
     event.preventDefault()
     window.p2p.openExternal(result.url)
-  })
-  document.getElementById('update-banner-close').addEventListener('click', () => { banner.hidden = true })
+  }
+  close.onclick = () => { banner.hidden = true }
   banner.hidden = false
 }
 
 async function checkUpdatesOnStartup() {
   try {
-    const result = await window.p2p.checkForUpdates()
+    // force: re-checks every time the app is opened, as required
+    const result = await window.p2p.checkForUpdates({ force: true })
     if (result && result.available) showUpdateBanner(result)
   } catch (err) {
     // Silent — offline or API unavailable
   }
+}
+
+// =====================================================================
+// DEEP LINKS (coherence://)
+// =====================================================================
+
+/**
+ * Handles a coherence:// target delivered by the main process — either pushed
+ * through the 'deeplink' event or returned by p2p.rendererReady() at boot.
+ * @param {{route: 'profile'|'post', key: string, seq?: number}} target
+ */
+function handleDeepLink(target) {
+  if (!target || typeof target !== 'object' || typeof target.key !== 'string') return
+  // While the welcome/setup screen is active the link is kept by the main
+  // process and delivered again after the account reloads the app.
+  if (window.__coherenceSetupActive || !myKey) return
+  applyDeepLink(target)
+}
+
+async function applyDeepLink({ route, key, seq }) {
+  // Ensure the core is loaded even for users we do not follow yet.
+  try {
+    await window.p2p.ensureProfileLoaded(key)
+  } catch {
+    // Best effort — the profile view shows the "syncing" state otherwise.
+  }
+  await showProfileView(key)
+  if (route === 'post' && typeof seq === 'number') {
+    highlightPost(seq)
+  }
+}
+
+/** Scrolls to and briefly highlights a post inside the open profile view. */
+function highlightPost(seq) {
+  const el = els.profileView.querySelector(`[data-seq="${seq}"]`)
+  if (!el) {
+    showDeepLinkNotice(t('deepLinkPostNotFound'))
+    return
+  }
+  el.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  el.classList.add('post-highlight')
+  setTimeout(() => el.classList.remove('post-highlight'), 4000)
+}
+
+/** Shows a small transient notice at the bottom of the window. */
+function showDeepLinkNotice(message) {
+  const old = document.getElementById('deep-link-notice')
+  if (old) old.remove()
+  const notice = document.createElement('div')
+  notice.id = 'deep-link-notice'
+  notice.className = 'deep-link-notice'
+  notice.textContent = message
+  document.body.appendChild(notice)
+  setTimeout(() => notice.remove(), 4000)
 }
 
 // =====================================================================
@@ -1368,9 +1927,15 @@ async function checkUpdatesOnStartup() {
   await window.coherenceSetupReady
   if (window.__coherenceSetupActive) return
   lastRenderedLocale = window.coherenceI18n.locale
+  updateComposerCounter()
   await loadIdentity()
   await loadFollowing()
   await loadFeed()
   startProfilePolling()
   checkUpdatesOnStartup()
+  // Deep links: subscribe to live targets, then apply any link that arrived
+  // before the app finished booting (or while the welcome screen was shown).
+  window.p2p.on('deeplink', handleDeepLink)
+  const pending = await window.p2p.rendererReady()
+  if (pending) handleDeepLink(pending)
 })()

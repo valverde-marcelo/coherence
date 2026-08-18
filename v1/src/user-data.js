@@ -129,6 +129,50 @@ function listUserKeys(dataRoot) {
     .map((entry) => entry.name.toLowerCase())
 }
 
+/**
+ * Cached display name for an account, stored in its settings.json under
+ * `accountName`. It is written whenever the account is created/opened or the
+ * profile name changes, so the welcome screen can list accounts without
+ * opening their (heavy) hypercore stores.
+ */
+function readAccountName(dataDir) {
+  try {
+    const settings = JSON.parse(fs.readFileSync(path.join(dataDir, 'settings.json'), 'utf8'))
+    return typeof settings.accountName === 'string' && settings.accountName.trim()
+      ? settings.accountName.trim()
+      : null
+  } catch {
+    return null
+  }
+}
+
+function writeAccountName(dataDir, nome) {
+  const clean = typeof nome === 'string' ? nome.trim() : ''
+  if (!clean) return null
+  let settings = {}
+  try {
+    settings = JSON.parse(fs.readFileSync(path.join(dataDir, 'settings.json'), 'utf8'))
+  } catch {
+    // First time this account writes settings.
+  }
+  settings.accountName = clean.slice(0, 30)
+  fs.mkdirSync(dataDir, { recursive: true })
+  fs.writeFileSync(path.join(dataDir, 'settings.json'), JSON.stringify(settings, null, 2))
+  return settings.accountName
+}
+
+/**
+ * Lists every local account with its cached display name, for the account
+ * selector on the welcome screen.
+ * @returns {Array<{key: string, nome: string|null}>}
+ */
+function listUserAccounts(dataRoot) {
+  return listUserKeys(dataRoot).map((key) => ({
+    key,
+    nome: readAccountName(userDataDir(dataRoot, key))
+  }))
+}
+
 function parseUserKeyArg(argv = process.argv, env = process.env) {
   const index = argv.indexOf('--user-key')
   const value = index >= 0
@@ -151,5 +195,8 @@ module.exports = {
   writeRecoveredMarker,
   isEstablished,
   listUserKeys,
+  readAccountName,
+  writeAccountName,
+  listUserAccounts,
   parseUserKeyArg
 }
